@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="590" viewBox="0 0 720 590" fill="none">
+<defs><pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse"><path d="M36 0H0V36" stroke="#548574" stroke-opacity=".13"/></pattern><linearGradient id="beam" x1="354" y1="155" x2="354" y2="345" gradientUnits="userSpaceOnUse"><stop stop-color="#a8e4c4" stop-opacity=".35"/><stop offset="1" stop-color="#a8e4c4" stop-opacity=".02"/></linearGradient></defs>
+<rect width="720" height="590" fill="#102629"/><rect x="18" y="18" width="684" height="554" fill="url(#grid)"/>
+<g stroke="#4f766b" stroke-width="1"><path d="M30 68V30h38M652 30h38v38M690 522v38h-38M68 560H30v-38"/><path d="M98 406l353-176 190 99-353 177Z" stroke-dasharray="4 7"/></g>
+<path d="M86 367l346-173 222 111-346 173Z" fill="#29443f" stroke="#668779"/><path d="M86 367v31l222 111v-31Z" fill="#193934" stroke="#668779"/><path d="M308 478v31l346-173v-31Z" fill="#24433b" stroke="#668779"/>
+<g stroke="#598573" stroke-width="1.3"><path d="M110 355l221 110M149 336l221 110M188 316l221 111M227 297l221 110M266 277l221 110M305 258l221 110M344 238l221 110M383 219l221 110M422 199l221 110"/></g>
+<path d="M123 416v79l22 12v-78M291 500v42l22 12v-45M618 357v86l21-11v-86" fill="#23413a" stroke="#729887"/>
+<path d="M451 90l27-14 24 12v153l-26 14-25-13Z" fill="#2a4b42" stroke="#759785"/><path d="M451 90l-148 74 24 12 149-74Z" fill="#34584a" stroke="#83a990"/><path d="M303 164v30l24 13v-31M327 176l149-74v30l-149 75" fill="#224639" stroke="#83a990"/>
+<path d="M294 189l37-18 42 21-37 19Z" fill="#9fd2b5" stroke="#bee9cd"/><path d="M294 189v35l42 21v-34Z" fill="#527d63" stroke="#b9e0c4"/><path d="M336 211l37-19v35l-37 18Z" fill="#719f7d" stroke="#b9e0c4"/><ellipse cx="319" cy="232" rx="13" ry="7" transform="rotate(27 319 232)" fill="#102629" stroke="#a8e4c4"/>
+<path d="M317 238L240 333l145 73 9-131Z" fill="url(#beam)"/><path d="M317 238L240 333M317 238l68 168M317 238l77 37" stroke="#a8e4c4" stroke-opacity=".35" stroke-dasharray="4 7"/>
+<path d="M272 333l49-25 50 25-49 25Z" fill="#d3dfcb" stroke="#e6eee0"/><path d="M272 333v33l50 25v-33Z" fill="#809b83" stroke="#bed6bd"/><path d="M322 358l49-25v33l-49 25Z" fill="#a5c0a0" stroke="#d1e1c6"/>
+<path d="M250 326l70-35 77 38v50l-72 36-75-38Z" stroke="#a8e4c4" stroke-width="1.5" stroke-dasharray="6 5"/><path d="M250 338v-12l13-7M384 323l13 6v13M397 367v12l-13 7M263 384l-13-7v-13" stroke="#c3f4d2" stroke-width="3"/>
+<path d="M167 387l36-18 37 18-36 18Z" fill="#426d55" stroke="#81a487"/><path d="M167 387v25l37 18v-25Z" fill="#31543e" stroke="#81a487"/><path d="M204 405l36-18v25l-36 18Z" fill="#50785b" stroke="#81a487"/>
+<path d="M440 276l36-18 37 18-36 18Z" fill="#426d55" stroke="#81a487"/><path d="M440 276v25l37 18v-25Z" fill="#31543e" stroke="#81a487"/><path d="M477 294l36-18v25l-36 18Z" fill="#50785b" stroke="#81a487"/>
+<g font-family="Consolas,monospace" font-size="12" fill="#b1d3c3"><path d="M362 184l70-48h115" stroke="#7aa690" fill="none"/><circle cx="362" cy="184" r="3" fill="#a8e4c4"/><text x="439" y="126">01 / IMAGE ACQUISITION</text><path d="M395 344l136 72h114" stroke="#7aa690" fill="none"/><circle cx="395" cy="344" r="3" fill="#a8e4c4"/><text x="533" y="406">02 / INSPECT</text><path d="M479 386l22 102h135" stroke="#7aa690" fill="none"/><circle cx="479" cy="386" r="3" fill="#a8e4c4"/><text x="507" y="479">03 / ROUTE + RECORD</text><text x="40" y="550" fill="#729e8a">VISION / CONTROL / DATA</text></g>
+</svg>
+
