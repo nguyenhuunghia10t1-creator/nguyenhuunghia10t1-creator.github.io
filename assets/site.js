@@ -22,7 +22,7 @@ form?.addEventListener('submit',e=>{
  for(const input of form.querySelectorAll('[required]')){input.setCustomValidity(input.value.trim()?'':'Please complete this field.');if(!input.checkValidity()){input.reportValidity();return}}
  const value=id=>document.querySelector('#'+id).value.trim();
  const subject=`Engineering inquiry: ${value('project-type')} — ${value('company')}`;
- const body=[`Hello VerdefSoft,`,'',`Name: ${value('name')}`,`Company: ${value('company')}`,`Work email: ${value('email')}`,`Phone: ${value('phone')||'Not provided'}`,`Project type: ${value('project-type')}`,'','Project brief:',value('message')].join('\n');
+ const body=[`Hello VerdefSoft Technologies,`,'',`Name: ${value('name')}`,`Company: ${value('company')}`,`Work email: ${value('email')}`,`Phone: ${value('phone')||'Not provided'}`,`Project type: ${value('project-type')}`,'','Project brief:',value('message')].join('\n');
  const draft=`To: engineering@verdefsoft.me\nSubject: ${subject}\n\n${body}`;
  document.querySelector('#email-draft').value=draft;
  document.querySelector('#open-email').href=`mailto:engineering@verdefsoft.me?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;

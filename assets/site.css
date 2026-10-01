@@ -1,4 +1,5 @@
 @charset "UTF-8";
+.brand-wordmark{display:block;line-height:1.15}.brand-wordmark small{display:block;font:600 9px/1.3 "Segoe UI",Arial,sans-serif;letter-spacing:.21em;margin-top:5px}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .architecture div span{color:#456652!important}
 :root{--ink:#172d31;--muted:#536569;--paper:#f7f8f5;--white:#fff;--line:#d9e1dc;--dark:#102629;--accent:#a8e4c4;--green:#246653;--max:1320px;--font:"Segoe UI",Arial,sans-serif;--mono:Consolas,"Liberation Mono",monospace;color-scheme:light}
