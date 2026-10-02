@@ -1,4 +1,4 @@
-# VerdefSoft Technologies
+# VerdefSoft Technologies Co., Ltd.
 
 Production: https://verdefsoft.me
 
@@ -6,7 +6,7 @@ A static B2B website for Industrial Automation, Machine Vision, Edge AI and Indu
 
 ## Editing
 
-- `scripts/content.mjs`: solution content, industry applications, concept projects and engineering notes.
+- `scripts/content.mjs`: team members, solution content, industry applications, concept projects and engineering notes.
 - `scripts/build.mjs`: shared page templates, home/company/contact/legal content, navigation and metadata.
 - `assets/site.css`: responsive design system.
 - `assets/site.js`: mobile navigation, architecture tabs and the local email-draft tool.
@@ -28,6 +28,8 @@ The form only prepares a draft locally. Visitors must open their email applicati
 All displayed projects are concepts/reference architectures, not verified prototypes, installations or customer case studies. The dashboard diagram is an illustrative interface. Technology names describe options; they do not imply vendor partnerships/certifications. No customers, metrics, testimonials, founding date, staff counts, offices, certifications or commercial outcomes are invented.
 
 Replace concepts with evidenced engineering work when available. Add validated project scope, images with permission, acceptance results and deployment status. Add verified company/legal details and actual email operations when established.
+
+The displayed company name is supplied by the owner. Team names and the founder/architecture role come from the owner's reference image. Other role labels have been adjusted to the site's industrial focus. Individual email aliases use `verdefsoft.me`; mailbox routing and delivery are handled by the owner's email configuration. No biographies, employment history or registration identifiers are added.
 
 ## Domain and recovery
 
