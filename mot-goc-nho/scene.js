@@ -73,6 +73,7 @@ function pointMaterial(uniforms, { opacity = 1, glow = false, sizeMultiplier = 1
       uSizeMultiplier: { value: sizeMultiplier },
       uGlow: { value: glow ? 1 : 0 },
       uPetal: { value: petal ? 1 : 0 },
+      uQuietZone: { value: new THREE.Vector4(-2, -2, -1, -1) },
       uEmission: { value: emission },
     },
     vertexColors: true,
@@ -90,6 +91,7 @@ function pointMaterial(uniforms, { opacity = 1, glow = false, sizeMultiplier = 1
       varying vec3 vColor;
       varying float vDepth;
       varying float vPhase;
+      varying vec2 vScreen;
       void main() {
         vec3 p = position;
         float crown = smoothstep(1.4, 6.7, p.y);
@@ -102,6 +104,7 @@ function pointMaterial(uniforms, { opacity = 1, glow = false, sizeMultiplier = 1
         vDepth = -mv.z;
         vPhase = aPhase;
         gl_Position = projectionMatrix * mv;
+        vScreen = gl_Position.xy / gl_Position.w * 0.5 + 0.5;
         gl_PointSize = clamp(aSize * uSizeMultiplier * uPixelRatio * 43.0 / max(1.0, -mv.z), 0.8 * uPixelRatio, (uSizeMultiplier > 2.0 ? 24.0 : 8.0) * uPixelRatio);
       }
     `,
@@ -112,14 +115,16 @@ function pointMaterial(uniforms, { opacity = 1, glow = false, sizeMultiplier = 1
       uniform float uMotion;
       uniform float uGlow;
       uniform float uPetal;
+      uniform vec4 uQuietZone;
       uniform float uEmission;
       varying vec3 vColor;
       varying float vDepth;
       varying float vPhase;
+      varying vec2 vScreen;
       void main() {
         vec2 q = gl_PointCoord - vec2(0.5);
         if (uPetal > 0.5) {
-          float angle = uTime * 0.575 * uMotion + vPhase;
+          float angle = uTime * (0.72 + 0.20 * sin(vPhase)) * uMotion + vPhase;
           q = mat2(cos(angle), -sin(angle), sin(angle), cos(angle)) * q;
           q.x *= 1.0 + abs(sin(angle * 0.67)) * 0.62;
           q.y *= 1.55;
@@ -127,6 +132,11 @@ function pointMaterial(uniforms, { opacity = 1, glow = false, sizeMultiplier = 1
         float radius = length(q) * 2.0;
         if (radius > 1.0) discard;
         float alpha = (1.0 - smoothstep(0.16, 1.0, radius)) * uOpacity;
+        if (uPetal > 0.5) {
+          vec2 enter = smoothstep(uQuietZone.xy - vec2(0.018), uQuietZone.xy, vScreen);
+          vec2 leave = 1.0 - smoothstep(uQuietZone.zw, uQuietZone.zw + vec2(0.018), vScreen);
+          alpha *= 1.0 - 0.96 * enter.x * enter.y * leave.x * leave.y;
+        }
         if (uGlow > 0.5) alpha = exp(-radius * radius * 4.4) * (1.0 - smoothstep(0.72, 1.0, radius)) * uOpacity;
         float center = 1.0 - smoothstep(0.0, 0.4, radius);
         vec3 c = vColor * (0.87 + center * 0.28) * uExposure * uEmission;
@@ -463,7 +473,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   branchMaterial.depthWrite = false;
   const branchGlowMaterial = pointMaterial(uniforms, { opacity: 0.10, glow: true, sizeMultiplier: 4.0, emission: 1.15 });
   const blossomGlowMaterial = pointMaterial(uniforms, { opacity: 0.026, glow: true, sizeMultiplier: 7.2 });
-  const petalMaterial = pointMaterial(uniforms, { opacity: 0.86, sizeMultiplier: 1.30, petal: true });
+  const petalMaterial = pointMaterial(uniforms, { opacity: 0.90, sizeMultiplier: 1.38, petal: true });
   const starMaterial = pointMaterial(uniforms, { opacity: 0.58, glow: true });
   materials.push(mainMaterial, flowerMaterial, branchMaterial, branchGlowMaterial, blossomGlowMaterial, petalMaterial, starMaterial);
   function addCloud(cloud, material, parent = scene) {
@@ -585,11 +595,11 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   scene.add(floor);
 
   // One reusable falling-petal buffer, shared by ambient petals and the flower tap.
-  const petalCount = lowQuality ? 48 : 90;
+  const petalCount = lowQuality ? 96 : 160;
   const petalCloud = new PointCloud(random);
   const petalState = Array.from({ length: petalCount }, (_, i) => {
-    petalCloud.point(0, -20, 0, PALETTE.flowers[2 + i % 3], 1.8 + random() * 0.8);
-    return { active: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, phase: random() * Math.PI * 2, life: 0 };
+    petalCloud.point(0, -20, 0, PALETTE.flowers[2 + i % 4], 1.6 + random() * 1.2);
+    return { active: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, phase: petalCloud.phases[i], life: 0, layer: 'crown' };
   });
   const petals = addCloud(petalCloud, petalMaterial);
   petals.frustumCulled = false;
@@ -597,41 +607,61 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   petalPositions.setUsage(THREE.DynamicDrawUsage);
   let ambientTimer = 0;
   let nextPetal = 0;
-  function releasePetal(origin, interaction = false) {
+  let ambientSpawned = 0;
+  let petalQuietTimer = 0;
+  const petalQuietZone = petalMaterial.uniforms.uQuietZone.value;
+  function ambientInterval() {
+    return (mode === 'explore' ? 0.19 : mode === 'letter' ? 0.30 : 0.62) * (lowQuality ? 1.65 : 1);
+  }
+  function updatePetalQuietZone() {
+    petalQuietZone.set(-2, -2, -1, -1);
+    if (mode !== 'letter') return;
+    const element = document.querySelector(fullReading ? '#letter-scroll' : '#particle-stage');
+    if (!element || !element.getClientRects().length) return;
+    const rect = element.getBoundingClientRect();
+    const view = canvas.getBoundingClientRect();
+    petalQuietZone.set((rect.left - view.left - 10) / view.width, 1 - (rect.bottom - view.top + 10) / view.height,
+      (rect.right - view.left + 10) / view.width, 1 - (rect.top - view.top - 10) / view.height);
+  }
+  function releasePetal(origin, interaction = false, layer = 'crown') {
     const p = petalState[nextPetal];
     nextPetal = (nextPetal + 1) % petalCount;
     Object.assign(p, {
       active: true, x: origin.x + (random() - 0.5) * 0.45, y: origin.y + random() * 0.16,
       z: origin.z + (random() - 0.5) * 0.45,
-      vx: (random() - 0.4) * (interaction ? 0.56 : 0.2),
-      vy: -(0.15 + random() * 0.22) * 1.48, vz: (random() - 0.5) * 0.35,
-      life: interaction ? 11 : 18,
+      vx: (random() - 0.3) * (interaction ? 0.72 : 0.46),
+      vy: -(0.46 + random() * 0.42) * (layer === 'near' ? 1.12 : 1), vz: (random() - 0.5) * 0.24,
+      life: 16, layer,
     });
   }
 
-  // Two reusable thin quads, drawn in the distant sky before the tree. A seeded
-  // schedule keeps these rare; screen-space exclusion protects both text and crown.
+  // One draw call, with four reusable streaks at three apparent depths. Test the
+  // thin swept path itself: a diagonal's enclosing rectangle can cover empty sky.
   const meteorRandom = seeded(917273);
-  const meteorSlots = Array.from({ length: 2 }, () => ({ active: false, age: 0, bounds: null }));
+  const meteorSlots = Array.from({ length: 4 }, () => ({ active: false, age: 0, duration: 1, bounds: null, strength: 0 }));
   const meteorGeometry = new THREE.BufferGeometry();
-  const meteorPositions = new THREE.Float32BufferAttribute(new Float32Array(36), 3);
-  const meteorStrength = new THREE.Float32BufferAttribute(new Float32Array(12), 1);
+  const meteorPositions = new THREE.Float32BufferAttribute(new Float32Array(72), 3);
+  const meteorStrength = new THREE.Float32BufferAttribute(new Float32Array(24), 1);
+  const meteorNear = new THREE.Float32BufferAttribute(new Float32Array(24), 1);
   meteorPositions.setUsage(THREE.DynamicDrawUsage);
   meteorStrength.setUsage(THREE.DynamicDrawUsage);
+  meteorNear.setUsage(THREE.DynamicDrawUsage);
   meteorGeometry.setAttribute('position', meteorPositions);
   meteorGeometry.setAttribute('aStrength', meteorStrength);
-  meteorGeometry.setAttribute('uv', new THREE.Float32BufferAttribute([
-    0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1,
-    0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1,
-  ], 2));
+  meteorGeometry.setAttribute('aNear', meteorNear);
+  meteorGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(Array.from({ length: 4 }, () => [0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1]).flat(), 2));
   geometries.push(meteorGeometry);
   const meteorMaterial = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    vertexShader: 'attribute float aStrength;varying float vStrength;varying vec2 vUv;void main(){vStrength=aStrength;vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
-    fragmentShader: `varying float vStrength;varying vec2 vUv;void main(){
-      float across=1.0-smoothstep(0.12,0.5,abs(vUv.y-0.5));
-      float trail=pow(vUv.x,1.7)*(1.0-smoothstep(0.94,1.0,vUv.x));
-      gl_FragColor=vec4(vec3(0.40,0.58,0.75),across*trail*vStrength);
+    vertexShader: 'attribute float aStrength;attribute float aNear;varying float vStrength;varying float vNear;varying vec2 vUv;void main(){vStrength=aStrength;vNear=aNear;vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+    fragmentShader: `varying float vStrength;varying float vNear;varying vec2 vUv;void main(){
+      float crossDistance=(vUv.y-0.5)*3.8;
+      float headDistance=(vUv.x-0.94)*24.0;
+      float across=exp(-crossDistance*crossDistance)*(1.0-smoothstep(0.35,0.5,abs(vUv.y-0.5)));
+      float trail=smoothstep(0.0,0.18,vUv.x)*pow(vUv.x,1.1)*(1.0-smoothstep(0.94,1.0,vUv.x));
+      float head=exp(-headDistance*headDistance);
+      vec3 color=mix(vec3(0.40,0.57,0.77),vec3(0.72,0.80,0.92),vNear);
+      gl_FragColor=vec4(color,across*(trail*0.64+head*0.64)*vStrength);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
     }`,
@@ -654,25 +684,50 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   const meteorRight = new THREE.Vector3();
   const meteorUp = new THREE.Vector3();
   const meteorCenter = new THREE.Vector3();
+  const meteorQuadCorners = [[0, -1], [0, 1], [1, -1], [1, -1], [0, 1], [1, 1]];
   let meteorTimer = 0;
-  let nextMeteorDelay = 4.6;
+  let nextMeteorDelay = 1.7;
   let meteorSpawned = 0;
+  let meteorSkipped = 0;
+  let meteorPeakActive = 0;
+  const meteorTimeline = [];
   let meteorSkyBounds = null;
   let meteorExclusionBounds = [];
-  function overlaps(a, b, gap = 0) {
-    return a.left < b.right + gap && a.right > b.left - gap && a.top < b.bottom + gap && a.bottom > b.top - gap;
+  let meteorDomCache = { key: '', at: -1, boxes: [] };
+  function segmentHitsBox(ax, ay, bx, by, box, gap) {
+    let enter = 0;
+    let leave = 1;
+    for (const [origin, delta, min, max] of [[ax, bx - ax, box.left - gap, box.right + gap], [ay, by - ay, box.top - gap, box.bottom + gap]]) {
+      if (Math.abs(delta) < 0.00001) {
+        if (origin < min || origin > max) return false;
+      } else {
+        const a = (min - origin) / delta;
+        const b = (max - origin) / delta;
+        enter = Math.max(enter, Math.min(a, b));
+        leave = Math.min(leave, Math.max(a, b));
+        if (enter > leave) return false;
+      }
+    }
+    return true;
   }
   function meteorSpace(rect) {
     const width = rect.width;
     const height = rect.height;
-    const sky = { left: width * 0.055, right: width * 0.945, top: Math.max(70, height * 0.055), bottom: height * 0.23 };
-    const blocked = [];
-    for (const selector of ['.page-header .wordmark', '.page-header button', '#particle-stage', '#letter-scroll', '.letter-topline .eyebrow', '.letter-topline button', '.scene-caption']) {
-      const element = document.querySelector(selector);
-      if (!element || !element.getClientRects().length || getComputedStyle(element).visibility === 'hidden') continue;
-      const box = element.getBoundingClientRect();
-      blocked.push({ left: box.left - rect.left, right: box.right - rect.left, top: box.top - rect.top, bottom: box.bottom - rect.top });
+    // Compact phones may only have sky beside the crown. Keep those narrow
+    // corridors available instead of excluding a full-width horizontal band.
+    const sky = { left: 7, right: width - 7, top: 8, bottom: height * (width < 900 ? 0.58 : 0.48) };
+    const key = `${mode}:${fullReading}:${width}:${height}:${rect.left}:${rect.top}`;
+    if (meteorDomCache.key !== key || elapsed - meteorDomCache.at > 0.2) {
+      const boxes = [];
+      for (const selector of ['.page-header .wordmark', '.page-header button', '#particle-stage', '#letter-scroll', '.letter-topline .eyebrow', '.letter-topline button', '.scene-caption', '.scene-actions', '#dialogue', '#music-root']) {
+        const element = document.querySelector(selector);
+        if (!element || !element.getClientRects().length || getComputedStyle(element).visibility === 'hidden') continue;
+        const box = element.getBoundingClientRect();
+        boxes.push({ left: box.left - rect.left, right: box.right - rect.left, top: box.top - rect.top, bottom: box.bottom - rect.top });
+      }
+      meteorDomCache = { key, at: elapsed, boxes };
     }
+    const blocked = [...meteorDomCache.boxes];
     tree.updateMatrixWorld(true);
     camera.updateMatrixWorld(true);
     const crown = { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity };
@@ -686,7 +741,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     blocked.push(crown);
     meteorSkyBounds = sky;
     meteorExclusionBounds = blocked;
-    return { sky, blocked };
+    return { sky, blocked, crown };
   }
   function updateMeteors(delta) {
     if (reducedMotion || mode === 'locked') {
@@ -699,60 +754,94 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     const due = meteorTimer >= nextMeteorDelay;
     if (!due && !meteorSlots.some(slot => slot.active)) return;
     const rect = canvas.getBoundingClientRect();
-    const { sky, blocked } = meteorSpace(rect);
-    const clear = bounds => bounds.left >= sky.left && bounds.right <= sky.right && bounds.top >= sky.top && bounds.bottom <= sky.bottom && !blocked.some(box => overlaps(bounds, box, 14));
+    const { sky, blocked, crown } = meteorSpace(rect);
+    const clear = (ax, ay, bx, by, margin = 7) => Math.min(ax, bx) >= sky.left + 2 && Math.max(ax, bx) <= sky.right - 2 && Math.min(ay, by) >= sky.top + 2 && Math.max(ay, by) <= sky.bottom - 2 && !blocked.some(box => segmentHitsBox(ax, ay, bx, by, box, margin));
+    const cap = lowQuality || qualityDowngraded ? 3 : 4;
     if (due) {
       meteorTimer = 0;
-      nextMeteorDelay = 9 + meteorRandom() * 6;
-      const slot = meteorSlots.find(item => !item.active);
-      if (slot && sky.bottom - sky.top > 24) {
-        for (let attempt = 0; attempt < 16; attempt++) {
-          const length = Math.max(22, Math.min(rect.width < 600 ? 30 : 105, rect.width * (0.055 + meteorRandom() * 0.024)));
-          const slope = rect.width < 600 ? 0.24 : 0.32;
-          const travelX = length * (rect.width < 600 ? 0.9 : 1.1);
-          const travelY = travelX * slope;
-          const x = sky.left + length + meteorRandom() * Math.max(0, sky.right - sky.left - length - travelX);
-          const y = sky.top + length * slope + 2 + (attempt < 4 ? 0 : meteorRandom() * Math.max(0, sky.bottom - sky.top - length * slope - travelY - 4));
-          const path = { left: x - length - 2, right: x + travelX + 2, top: y - length * slope - 2, bottom: y + travelY + 2 };
-          if (!clear(path)) continue;
-          Object.assign(slot, { active: true, age: 0, duration: 1.45 + meteorRandom() * 0.3, x: x / rect.width, y: y / rect.height, travelX: travelX / rect.width, travelY: travelY / rect.height, length: length / rect.width, slope, bounds: path });
+      nextMeteorDelay = 2.4 + meteorRandom() * 1.8;
+      const burst = cap > 3 && meteorSpawned > 0 && meteorRandom() < 0.26 ? 2 : 1;
+      for (let burstIndex = 0; burstIndex < burst; burstIndex++) {
+        const slot = meteorSlots.slice(0, cap).find(item => !item.active);
+        if (!slot) break;
+        const layer = meteorSpawned % 3;
+        const compact = rect.width < 600;
+        const near = layer / 2;
+        const baseLength = compact ? 24 + near * 14 : Math.min(122, rect.width * (0.05 + near * 0.032));
+        let accepted = false;
+        for (let attempt = 0; attempt < 64; attempt++) {
+          const sidePath = compact && attempt >= 8 && attempt < 32;
+          const shrink = attempt >= 40 ? 0.74 : 1;
+          const length = baseLength * (0.9 + meteorRandom() * 0.16) * shrink;
+          const travel = (compact ? 34 + near * 19 : 110 + near * 78) * shrink;
+          const angle = sidePath ? 1.23 + meteorRandom() * 0.12 : 0.36 + meteorRandom() * 0.18;
+          const directionX = Math.cos(angle);
+          const directionY = Math.sin(angle);
+          const spanX = (length + travel) * directionX;
+          const spanY = (length + travel) * directionY;
+          const left = sky.left + 3 + Math.max(0, -spanX);
+          const right = sky.right - 3 - Math.max(0, spanX);
+          const top = sky.top + 3;
+          const bottom = sky.bottom - 3 - spanY;
+          if (right < left || bottom < top) continue;
+          const tailX = sidePath ? (attempt % 4 < 2 ? left : right) : left + meteorRandom() * (right - left);
+          const tailY = sidePath ? THREE.MathUtils.clamp(crown.top + (crown.bottom - crown.top) * (0.50 + meteorRandom() * 0.20), top, bottom) : attempt < 8 ? top + (attempt % 4) * 9 : top + meteorRandom() * (bottom - top);
+          if (!clear(tailX, tailY, tailX + spanX, tailY + spanY)) continue;
+          Object.assign(slot, {
+            active: true, age: -burstIndex * 0.32, duration: 1.55 + near * 0.35 + meteorRandom() * 0.30,
+            x: (tailX + directionX * length) / rect.width, y: (tailY + directionY * length) / rect.height,
+            travelX: directionX * travel / rect.width, travelY: directionY * travel / rect.height,
+            tailX: directionX * length / rect.width, tailY: directionY * length / rect.height,
+            directionX, directionY, layer, near, width: 1.35 + near * 0.95,
+            peakStrength: 0.64 + near * 0.14, depth: 144 - near * 54, strength: 0, bounds: null, segment: null,
+          });
           meteorSpawned++;
+          meteorTimeline.push({ time: elapsed + burstIndex * 0.32, layer, length, travel, angle, duration: slot.duration });
+          if (meteorTimeline.length > 24) meteorTimeline.shift();
+          accepted = true;
           break;
         }
+        if (!accepted) meteorSkipped++;
       }
     }
-    // Keep the distant plane behind the tree at every permitted orbit angle.
-    const depth = 100;
-    const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * depth;
-    camera.getWorldDirection(meteorCenter).multiplyScalar(depth).add(camera.position);
     meteorRight.setFromMatrixColumn(camera.matrixWorld, 0);
     meteorUp.setFromMatrixColumn(camera.matrixWorld, 1);
-    const corners = [[0, -1], [0, 1], [1, -1], [1, -1], [0, 1], [1, 1]];
     let visible = false;
+    let activeCount = 0;
     meteorSlots.forEach((slot, slotIndex) => {
       slot.age += slot.active ? delta : 0;
-      const progress = slot.age / slot.duration;
-      if (progress >= 1) slot.active = false;
+      const progress = Math.max(0, slot.age / slot.duration);
+      if (progress >= 1 || slotIndex >= cap) slot.active = false;
+      // All three layers stay behind the crown even at the maximum orbit distance.
+      const depth = Math.max(slot.depth || 144, camera.position.distanceTo(controls.target) + 25);
+      const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * depth;
+      camera.getWorldDirection(meteorCenter).multiplyScalar(depth).add(camera.position);
       const headX = (slot.x + slot.travelX * progress) * rect.width;
       const headY = (slot.y + slot.travelY * progress) * rect.height;
-      const length = slot.length * rect.width;
-      const bounds = { left: headX - length - 2, right: headX + 2, top: headY - length * slot.slope - 2, bottom: headY + 2 };
-      if (slot.active && !clear(bounds)) slot.active = false;
+      const tailX = headX - slot.tailX * rect.width;
+      const tailY = headY - slot.tailY * rect.height;
+      const bounds = { left: Math.min(tailX, headX) - 2, right: Math.max(tailX, headX) + 2, top: Math.min(tailY, headY) - 2, bottom: Math.max(tailY, headY) + 2 };
+      if (slot.active && !clear(tailX, tailY, headX, headY)) slot.active = false;
       slot.bounds = slot.active ? { left: bounds.left + rect.left, right: bounds.right + rect.left, top: bounds.top + rect.top, bottom: bounds.bottom + rect.top } : null;
-      const strength = slot.active ? smoothStep(0, 0.16, progress) * (1 - smoothStep(0.60, 1, progress)) * 0.38 : 0;
-      visible ||= slot.active;
+      slot.segment = slot.active ? { tailX: tailX + rect.left, tailY: tailY + rect.top, headX: headX + rect.left, headY: headY + rect.top } : null;
+      slot.strength = slot.active && slot.age >= 0 ? smoothStep(0, 0.14, progress) * (1 - smoothStep(0.68, 1, progress)) * slot.peakStrength : 0;
+      visible ||= slot.strength > 0;
+      if (slot.strength > 0) activeCount++;
       for (let vertex = 0; vertex < 6; vertex++) {
-        const [end, side] = corners[vertex];
-        const x = headX - (1 - end) * length - side * 0.25;
-        const y = headY - (1 - end) * length * slot.slope + side * 0.85;
+        const [end, side] = meteorQuadCorners[vertex];
+        const x = tailX + (headX - tailX) * end - side * slot.directionY * slot.width * 0.5;
+        const y = tailY + (headY - tailY) * end + side * slot.directionX * slot.width * 0.5;
         meteorWorld.copy(meteorCenter).addScaledVector(meteorRight, (x / rect.width * 2 - 1) * halfHeight * camera.aspect).addScaledVector(meteorUp, (1 - y / rect.height * 2) * halfHeight);
         const index = slotIndex * 6 + vertex;
         meteorPositions.setXYZ(index, slot.active ? meteorWorld.x : 0, slot.active ? meteorWorld.y : 0, slot.active ? meteorWorld.z : 0);
-        meteorStrength.setX(index, strength);
+        meteorStrength.setX(index, slot.strength);
+        meteorNear.setX(index, slot.near || 0);
       }
     });
+    meteorPeakActive = Math.max(meteorPeakActive, activeCount);
     meteorPositions.needsUpdate = true;
     meteorStrength.needsUpdate = true;
+    meteorNear.needsUpdate = true;
     meteors.visible = visible;
   }
 
@@ -936,19 +1025,31 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
       rightArm.rotation.z = lift * (1.88 + (reducedMotion ? 0 : Math.sin(waveAge * 8) * 0.13));
     } else rightArm.rotation.z = 0;
     figure.rotation.z = reducedMotion || mode !== 'explore' ? 0 : Math.sin(elapsed * 0.85) * 0.003;
+    petalQuietTimer -= delta;
+    if (petalQuietTimer <= 0) {
+      updatePetalQuietZone();
+      petalQuietTimer = 0.35;
+    }
     if (!reducedMotion) {
       ambientTimer += delta;
-      const interval = mode === 'explore' ? 1.8 : mode === 'letter' ? 3.8 : 2.8;
+      const interval = ambientInterval();
       if (ambientTimer > interval) {
-        ambientTimer = 0;
+        ambientTimer -= interval;
         const tip = treeData.tips[Math.floor(random() * treeData.tips.length)].center.clone();
         tree.updateMatrixWorld();
         tip.applyMatrix4(tree.matrixWorld);
-        if (random() < 0.22) {
-          tip.z += 4.5 + random() * 4;
-          tip.x += (random() - 0.5) * 4;
+        const depthRoll = random();
+        let layer = 'crown';
+        if (depthRoll < 0.18) {
+          layer = 'near';
+          tip.z += 3.5 + random() * 3;
+          tip.x += (random() - 0.5) * 2;
+        } else if (depthRoll > 0.78) {
+          layer = 'far';
+          tip.z -= 2.5 + random() * 2.5;
         }
-        releasePetal(tip);
+        releasePetal(tip, false, layer);
+        ambientSpawned++;
       }
     }
     let changed = false;
@@ -959,10 +1060,10 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
         p.active = false; petalPositions.setXYZ(i, 0, -20, 0); changed = true; continue;
       }
       p.life -= delta;
-      p.vy -= delta * 0.050;
-      p.x += (p.vx + Math.sin(elapsed * 1.35 + p.phase) * 0.15) * delta;
+      p.vy = Math.max(-1.32, p.vy - delta * 0.060);
+      p.x += (p.vx + Math.sin(elapsed * 0.95 + p.phase) * 0.23 + Math.sin(elapsed * 0.24) * 0.10) * delta;
       p.y += p.vy * delta;
-      p.z += p.vz * delta;
+      p.z += (p.vz + Math.cos(elapsed * 0.72 + p.phase) * 0.09) * delta;
       if (p.life <= 0 || p.y < 0.02) { p.active = false; p.y = -20; }
       petalPositions.setXYZ(i, p.x, p.y, p.z);
       changed = true;
@@ -1006,11 +1107,18 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
       treeRotationY: tree.rotation.y, maximumTreeDrift: 0.022,
       swayAmplitude: reducedMotion ? 0 : 0.052,
       activePetals: activePetals.length,
+      petalCapacity: petalCount, ambientSpawned, ambientInterval: ambientInterval(),
+      petalQuietZone: petalQuietZone.toArray(),
+      petalLayers: ['far', 'crown', 'near'].map(layer => ({ layer, count: activePetals.filter(p => p.layer === layer).length })),
+      petalSamples: activePetals.slice(0, 8).map(p => ({ x: p.x, y: p.y, z: p.z, layer: p.layer, rotation: elapsed * (0.72 + 0.20 * Math.sin(p.phase)) + p.phase })),
       averagePetalFallSpeed: activePetals.reduce((sum, p) => sum - p.vy / activePetals.length, 0),
       meteorVisible: meteors.visible, meteorSpawned,
+      meteorCapacity: lowQuality || qualityDowngraded ? 3 : 4,
+      meteorPeakActive, meteorSkipped, meteorNextIn: Math.max(0, nextMeteorDelay - meteorTimer),
+      meteorTimeline: meteorTimeline.map(item => ({ ...item })),
       meteorSkyBounds: meteorSkyBounds ? { ...meteorSkyBounds } : null,
       meteorExclusionBounds: meteorExclusionBounds.map(bounds => ({ ...bounds })),
-      meteors: meteorSlots.filter(p => p.active).map(p => ({ age: p.age, duration: p.duration, bounds: p.bounds ? { ...p.bounds } : null })),
+      meteors: meteorSlots.filter(p => p.active).map(p => ({ age: p.age, duration: p.duration, layer: ['far', 'middle', 'near'][p.layer], depth: p.depth, width: p.width, strength: p.strength, segment: p.segment ? { ...p.segment } : null, bounds: p.bounds ? { ...p.bounds } : null })),
     };
   }
 

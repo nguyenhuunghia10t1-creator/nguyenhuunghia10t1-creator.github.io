@@ -101,6 +101,8 @@ Chữ dùng sprite hạt/cánh hoa đã tạo sẵn, giới hạn mật độ v�
 
 Mặt nạ chữ được lấy mẫu ở độ phân giải gấp đôi, với các hạt bụi nhỏ chuyển động riêng quanh cùng cụm chữ–dấu. Lõi hạt khoảng 0,65–1,15 px; các cánh hoa nhỏ xuất hiện thưa khi tan. Mỗi vùng chữ giới hạn 5.000 hạt ở chiều rộng điện thoại hoặc 9.000 hạt ở vùng rộng; pha tan kéo dài 2,6 giây, pha đọc rõ vẫn giữ 3 giây.
 
+Hiệu ứng nền dùng buffer tái sử dụng: hoa được thả liên tục theo ba lớp xa, trong tán và gần máy quay, với gió ngang và tốc độ xoay khác nhau. Nhịp cơ bản khoảng 0,30 giây/cánh khi đọc và 0,19 giây/cánh khi khám phá; thiết bị hạn chế giảm mật độ. Chỉ cánh hoa đi vào vùng chữ được làm dịu bằng shader, không có lớp phủ lên cảnh. Sao băng có đầu–đuôi mờ mềm, nhiều độ sâu và lịch xuất hiện ngắn hơn; đường bay tránh vùng chữ, nút và tán cây. Cả hai hiệu ứng dừng khi bật giảm chuyển động và khi tab ẩn.
+
 ## Thư viện và quyền riêng tư khi kiểm tra
 
 Three.js 0.186.1 và OrbitControls được lưu cùng trang dưới `vendor`; giấy phép MIT đi kèm. Noto Serif dùng SIL Open Font License; nguồn và giấy phép có trong `assets/fonts/`. Không dùng CDN lúc chạy, framework UI, bộ theo dõi hoặc backend. Kiểm thử trình duyệt và ảnh riêng không nằm trong repository.
