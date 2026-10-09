@@ -55,6 +55,7 @@ function completeLetter() {
   presentationGeneration++;
   letterEffect?.stop();
   document.body.dataset.letterMode='full';
+  scene?.setReadingLayout?.(true);
   const blocks = openedText.trimEnd().split(/\n\n/);
   $('letter-content').replaceChildren(...blocks.map((text,index)=>{
     const paragraph=document.createElement('p');
@@ -78,6 +79,7 @@ async function typeLetter() {
   const generation=++presentationGeneration;
   typingComplete=false;
   document.body.dataset.letterMode='cinematic';
+  scene?.setReadingLayout?.(false);
   $('letter-content').replaceChildren();
   $('particle-stage').hidden=false;
   $('letter-scroll').hidden=true;
@@ -151,9 +153,10 @@ $('motion-toggle').addEventListener('click',()=>{reducedMotion=!reducedMotion;up
 reducedQuery.addEventListener('change',event=>{reducedMotion=event.matches;updateMotion();});
 updateMotion();
 function fallback(){document.body.classList.add('fallback');$('scene-status').textContent='Một góc tĩnh lặng — em vẫn có thể đọc thư bình thường.';$('gesture-hint').textContent='Một góc bình yên, để em ngồi lại một chút.';$('reset-button').hidden=true;}
-import('./scene.js?v=20261009-r3').then(async ({createScene})=>{
+import('./scene.js?v=20261009-r3c').then(async ({createScene})=>{
   scene=await createScene({canvas:$('scene'),reducedMotion,onReady:()=>{$('scene-status').textContent='';},onFallback:fallback,onDialogue:text=>{$('dialogue').textContent=text;$('dialogue').hidden=false;clearTimeout(dialogueTimer);dialogueTimer=setTimeout(()=>{$('dialogue').hidden=true;},5500);}});
   scene?.setMode(document.body.dataset.view);
+  scene?.setReadingLayout?.(document.body.dataset.letterMode==='full');
   // Coordinates/state only, made available to local QA without exposing the letter.
   document.addEventListener('gift:scene-probe',()=>document.dispatchEvent(new CustomEvent('gift:scene-state',{detail:scene?.getProjectionTargets?.()??null})));
 }).catch(fallback);

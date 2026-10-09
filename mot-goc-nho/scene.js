@@ -386,6 +386,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   let disposed = false;
   let failed = false;
   let mode = 'locked';
+  let fullReading = false;
   let raf = 0;
   let frameTime = 0;
   let elapsed = 0;
@@ -411,7 +412,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   const textures = [];
 
   const fallbackController = {
-    setMode() {}, reset() {}, dispose() {}, setReducedMotion() {},
+    setMode() {}, reset() {}, dispose() {}, setReducedMotion() {}, setReadingLayout() {},
     getProjectionTargets() { return null; },
   };
   function fail() {
@@ -610,19 +611,26 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   const initialCamera = new THREE.Vector3();
   const initialTarget = new THREE.Vector3(0, 4.17, 0);
   function updateFraming() {
-    const introductionAtSide = mode === 'locked' && viewportWidth >= 900;
+    const introductionAtSide = (mode === 'locked' || (mode === 'letter' && fullReading)) && viewportWidth >= 900;
     if (introductionAtSide) {
       const visibleWidth = treeWidth * 1.24 / 0.61;
       baseDistance = Math.max(exploreDistance, visibleWidth / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect));
       initialTarget.set(treeCenterX - visibleWidth * 0.185, 4.48, 0);
     } else if (mode === 'letter') {
-      baseDistance = exploreDistance * (isPortrait ? 1.01 : 1.25);
-      initialTarget.set(isPortrait ? treeCenterX * 0.8 : 0, isPortrait ? 1.55 : 2.35, 0);
+      if (fullReading) {
+        baseDistance = exploreDistance * 1.35;
+        const visibleHeight = 2 * baseDistance * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+        initialTarget.set(treeCenterX * 0.8, 4.4 - visibleHeight * 0.23, 0);
+      } else {
+        baseDistance = exploreDistance * (isPortrait ? 1.01 : 1.25);
+        initialTarget.set(isPortrait ? treeCenterX * 0.8 : 0, isPortrait ? 1.55 : 2.35, 0);
+      }
     } else {
       baseDistance = exploreDistance;
       initialTarget.set(isPortrait ? treeCenterX * 0.8 : 0, isPortrait ? 4.70 : 4.26, 0);
     }
-    initialCamera.set(initialTarget.x + (isPortrait ? 0.40 : 1.45), initialTarget.y + baseDistance * 0.095, baseDistance);
+    const elevation = mode === 'letter' && fullReading && viewportWidth < 900 ? 0.17 : 0.095;
+    initialCamera.set(initialTarget.x + (isPortrait ? 0.40 : 1.45), initialTarget.y + baseDistance * elevation, baseDistance);
     controls.minDistance = baseDistance * 0.63;
     controls.maxDistance = baseDistance * 1.33;
   }
@@ -848,6 +856,11 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   raf = requestAnimationFrame(animate);
 
   return {
+    setReadingLayout(value) {
+      if (disposed || failed || fullReading === Boolean(value)) return;
+      fullReading = Boolean(value);
+      if (mode === 'letter') { updateFraming(); reset(); }
+    },
     setMode(next) {
       if (!['locked', 'letter', 'explore'].includes(next) || disposed || failed) return;
       const previous = mode;
