@@ -1,5 +1,5 @@
 import {decryptLetter} from './crypto.js';
-import {createMusic} from './music.js';
+import {createMusic} from './music.js?v=20261009-r6';
 import musicConfig from './music-config.js';
 import {createParticleLetter} from './particle-letter.js?v=20261009-r4';
 
@@ -26,6 +26,31 @@ try { letterEffect = createParticleLetter({
   }
 }); } catch { letterEffect = null; }
 try { music.init(); } catch { $('music-root').hidden = true; }
+const noLyrics = {setView(){},setReducedMotion(){},getState(){return {available:false};}};
+let lyrics = noLyrics;
+// Optional lyrics must never prevent the letter/player from starting, including
+// a failed module download or an invalid edited configuration file.
+async function loadLyrics() {
+  let candidate;
+  try {
+    const [{createLyrics},{default:lyricsConfig}] = await Promise.all([
+      import('./lyrics.js?v=20261009-r6'), import('./lyrics-config.js?v=20261009-r6'),
+    ]);
+    candidate = createLyrics({root:$('lyrics-zone'),canvas:$('lyrics-particles'),current:$('lyrics-current'),next:$('lyrics-next'),music,config:lyricsConfig,reducedMotion,
+      onAvailability:available=>scene?.setLyricsLayout?.(available)});
+    lyrics = candidate;
+    lyrics.setView(document.body.dataset.view);
+    lyrics.setReducedMotion(reducedMotion);
+    await lyrics.init();
+  } catch {
+    candidate?.dispose?.();
+    lyrics = noLyrics;
+    $('lyrics-zone').hidden=true;
+    document.body.classList.remove('has-lyrics');
+    scene?.setLyricsLayout?.(false);
+  }
+}
+loadLyrics();
 // Reserve the real control height, including a wrapped loading/error message.
 if ('ResizeObserver' in window) {
   const musicLayoutObserver = new ResizeObserver(() => {
@@ -49,6 +74,7 @@ function setView(view) {
   $('gate').hidden = view !== 'locked';
   $('letter-view').hidden = view !== 'letter';
   $('explore-view').hidden = view !== 'explore';
+  lyrics.setView(view);
   scene?.setMode(view);
 }
 function completeLetter() {
@@ -148,15 +174,16 @@ $('replay-button').addEventListener('click',()=>{typeLetter();$('reveal-button')
 $('explore-button').addEventListener('click',()=>{if(!typingComplete)return;setView('explore');$('reread-button').focus({preventScroll:true});});
 $('reread-button').addEventListener('click',()=>{setView('letter');typeLetter();(!letterEffect?$('letter-scroll'):$('reveal-button')).focus({preventScroll:true});});
 $('reset-button').addEventListener('click',()=>scene?.reset());
-function updateMotion(){document.body.classList.toggle('reduced-motion',reducedMotion);$('motion-toggle').setAttribute('aria-pressed',String(reducedMotion));$('motion-toggle').setAttribute('aria-label',reducedMotion?'Bật chuyển động nhẹ':'Giảm chuyển động');scene?.setReducedMotion(reducedMotion);letterEffect?.setReducedMotion(reducedMotion);$('replay-button').hidden=!typingComplete||!letterEffect;}
+function updateMotion(){document.body.classList.toggle('reduced-motion',reducedMotion);$('motion-toggle').setAttribute('aria-pressed',String(reducedMotion));$('motion-toggle').setAttribute('aria-label',reducedMotion?'Bật chuyển động nhẹ':'Giảm chuyển động');scene?.setReducedMotion(reducedMotion);letterEffect?.setReducedMotion(reducedMotion);lyrics.setReducedMotion(reducedMotion);$('replay-button').hidden=!typingComplete||!letterEffect;}
 $('motion-toggle').addEventListener('click',()=>{reducedMotion=!reducedMotion;updateMotion();});
 reducedQuery.addEventListener('change',event=>{reducedMotion=event.matches;updateMotion();});
 updateMotion();
 function fallback(){document.body.classList.add('fallback');$('scene-status').textContent='Một góc tĩnh lặng — em vẫn có thể đọc thư bình thường.';$('gesture-hint').textContent='Một góc bình yên, để em ngồi lại một chút.';$('reset-button').hidden=true;}
-import('./scene.js?v=20261009-r5b').then(async ({createScene})=>{
+import('./scene.js?v=20261009-r6').then(async ({createScene})=>{
   scene=await createScene({canvas:$('scene'),reducedMotion,onReady:()=>{$('scene-status').textContent='';},onFallback:fallback,onDialogue:text=>{$('dialogue').textContent=text;$('dialogue').hidden=false;clearTimeout(dialogueTimer);dialogueTimer=setTimeout(()=>{$('dialogue').hidden=true;},5500);}});
   scene?.setMode(document.body.dataset.view);
   scene?.setReadingLayout?.(document.body.dataset.letterMode==='full');
+  scene?.setLyricsLayout?.(lyrics.getState().available);
   // Coordinates/state only, made available to local QA without exposing the letter.
   document.addEventListener('gift:scene-probe',()=>document.dispatchEvent(new CustomEvent('gift:scene-state',{detail:scene?.getProjectionTargets?.()??null})));
 }).catch(fallback);

@@ -397,6 +397,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   let failed = false;
   let mode = 'locked';
   let fullReading = false;
+  let lyricsLayout = false;
   let raf = 0;
   let frameTime = 0;
   let elapsed = 0;
@@ -422,7 +423,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   const textures = [];
 
   const fallbackController = {
-    setMode() {}, reset() {}, dispose() {}, setReducedMotion() {}, setReadingLayout() {},
+    setMode() {}, reset() {}, dispose() {}, setReducedMotion() {}, setReadingLayout() {}, setLyricsLayout() {},
     getProjectionTargets() { return null; },
     getAnimationState() { return null; },
   };
@@ -615,8 +616,8 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   }
   function updatePetalQuietZone() {
     petalQuietZone.set(-2, -2, -1, -1);
-    if (mode !== 'letter') return;
-    const element = document.querySelector(fullReading ? '#letter-scroll' : '#particle-stage');
+    if (mode !== 'letter' && !(mode === 'explore' && lyricsLayout)) return;
+    const element = document.querySelector(mode === 'explore' ? '#lyrics-zone' : fullReading ? '#letter-scroll' : '#particle-stage');
     if (!element || !element.getClientRects().length) return;
     const rect = element.getBoundingClientRect();
     const view = canvas.getBoundingClientRect();
@@ -717,10 +718,10 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     // Compact phones may only have sky beside the crown. Keep those narrow
     // corridors available instead of excluding a full-width horizontal band.
     const sky = { left: 7, right: width - 7, top: 8, bottom: height * (width < 900 ? 0.58 : 0.48) };
-    const key = `${mode}:${fullReading}:${width}:${height}:${rect.left}:${rect.top}`;
+    const key = `${mode}:${fullReading}:${lyricsLayout}:${width}:${height}:${rect.left}:${rect.top}`;
     if (meteorDomCache.key !== key || elapsed - meteorDomCache.at > 0.2) {
       const boxes = [];
-      for (const selector of ['.page-header .wordmark', '.page-header button', '#particle-stage', '#letter-scroll', '.letter-topline .eyebrow', '.letter-topline button', '.scene-caption', '.scene-actions', '#dialogue', '#music-root']) {
+      for (const selector of ['.page-header .wordmark', '.page-header button', '#particle-stage', '#letter-scroll', '.letter-topline .eyebrow', '.letter-topline button', '#lyrics-zone', '.scene-actions', '#dialogue', '#music-root']) {
         const element = document.querySelector(selector);
         if (!element || !element.getClientRects().length || getComputedStyle(element).visibility === 'hidden') continue;
         const box = element.getBoundingClientRect();
@@ -860,7 +861,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   const initialCamera = new THREE.Vector3();
   const initialTarget = new THREE.Vector3(0, 4.17, 0);
   function updateFraming() {
-    const introductionAtSide = (mode === 'locked' || mode === 'letter') && viewportWidth >= 900;
+    const introductionAtSide = (mode === 'locked' || mode === 'letter' || (mode === 'explore' && lyricsLayout)) && viewportWidth >= 900;
     if (introductionAtSide) {
       const visibleWidth = treeWidth * 1.24 / 0.61;
       baseDistance = Math.max(exploreDistance, visibleWidth / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect));
@@ -872,6 +873,13 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
         const skyOffset = canvas.getBoundingClientRect().height < 680 ? 0.27 : 0.23;
         initialTarget.set(treeCenterX * 0.8, 4.4 - visibleHeight * skyOffset, 0);
       }
+    } else if (mode === 'explore' && lyricsLayout) {
+      // Reserve open sky above the crown for readable lyrics on portrait screens.
+      // Camera/orbit remain the same persistent scene and interaction system.
+      const compactLyrics = canvas.getBoundingClientRect().height < 680;
+      baseDistance = exploreDistance * (compactLyrics ? 1.42 : 1.12);
+      const visibleHeight = 2 * baseDistance * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+      initialTarget.set(treeCenterX * 0.8, 4.7 + visibleHeight * (compactLyrics ? 0.07 : 0.12), 0);
     } else {
       baseDistance = exploreDistance;
       initialTarget.set(isPortrait ? treeCenterX * 0.8 : 0, isPortrait ? 4.70 : 4.26, 0);
@@ -1115,7 +1123,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     if (failed || disposed) return null;
     const activePetals = petalState.filter(p => p.active);
     return {
-      elapsed, mode, reducedMotion, hidden: document.hidden,
+      elapsed, mode, reducedMotion, lyricsLayout, hidden: document.hidden,
       treeRotationY: tree.rotation.y, maximumTreeDrift: 0.022,
       swayAmplitude: reducedMotion ? 0 : 0.052,
       activePetals: activePetals.length,
@@ -1143,6 +1151,11 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
 
   return {
     getAnimationState,
+    setLyricsLayout(value) {
+      if (disposed || failed || lyricsLayout === Boolean(value)) return;
+      lyricsLayout = Boolean(value);
+      if (mode === 'explore') { updateFraming(); reset(); }
+    },
     setReadingLayout(value) {
       if (disposed || failed || fullReading === Boolean(value)) return;
       fullReading = Boolean(value);

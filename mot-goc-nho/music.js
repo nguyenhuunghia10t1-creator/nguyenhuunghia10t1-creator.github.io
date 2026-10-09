@@ -600,6 +600,8 @@ export function createMusic(config, { root }) {
       requestPlay('opening');
     },
     getState() { return Object.freeze({ ...state }); },
+    // Read-only reference for synchronized visuals; playback stays owned here.
+    getMediaElement() { return source.sourceType === 'mp3' ? audio || null : null; },
     dispose() {
       if (disposed) return;
       disposed = true;

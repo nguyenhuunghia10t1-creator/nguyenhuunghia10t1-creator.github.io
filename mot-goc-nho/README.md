@@ -67,6 +67,10 @@ sourceUrl: 'https://www.youtube.com/watch?v=VIDEO_ID',
 
 YouTube dùng player chính thức, hiển thị tối thiểu 200×200, tạm dừng khi tab hoặc player không còn hiển thị phù hợp. YouTube có kết nối đến dịch vụ bên thứ ba và chính sách riêng; không thể tuyên bố không có theo dõi từ bên thứ ba. MP3 nội bộ không tải dịch vụ nhạc bên ngoài. Website không thêm analytics của ứng dụng.
 
+## Lời hát trong chế độ khám phá
+
+`lyrics-config.js` chọn LRC và `offsetMs`; `LYRICS.md` hướng dẫn dữ liệu, mốc kết thúc đoạn hát và hiệu chỉnh. Lời chỉ hiển thị trong chế độ khám phá khi có dữ liệu thật khớp nguồn MP3. Tất cả pha tụ/tan lấy từ `audio.currentTime`; tạm dừng giữ nguyên hiệu ứng, tắt tiếng vẫn tiếp tục. Đọc lại thư chạy sequence từ đầu và ẩn lời hát; quay về cây chọn lại câu ở vị trí hiện tại của cùng MP3. Không có đồng hồ lời riêng hoặc nguồn âm thanh thứ hai.
+
 ## Kiểm tra và xuất bản thay đổi
 
 ```powershell

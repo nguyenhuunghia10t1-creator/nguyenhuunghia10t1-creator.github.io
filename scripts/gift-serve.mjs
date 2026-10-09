@@ -17,6 +17,7 @@ const contentTypes = new Map([
   ['.png', 'image/png'], ['.jpg', 'image/jpeg'], ['.jpeg', 'image/jpeg'],
   ['.webp', 'image/webp'], ['.ico', 'image/x-icon'], ['.mp3', 'audio/mpeg'],
   ['.woff2', 'font/woff2'], ['.txt', 'text/plain; charset=utf-8'],
+  ['.lrc', 'text/plain; charset=utf-8'],
 ]);
 
 function withinRoot(filename) {
