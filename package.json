@@ -1,0 +1,11 @@
+{
+  "name": "verdefsoft-static-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "gift:serve": "node scripts/gift-serve.mjs",
+    "gift:verify": "node scripts/gift-tools.mjs verify --private-dir ../private",
+    "test:gift": "node scripts/test-gift-crypto.mjs && node scripts/test-gift-music.mjs"
+  }
+}

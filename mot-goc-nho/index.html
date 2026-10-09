@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="theme-color" content="#070e19">
+  <meta name="description" content="Một lá thư, một cây phượng, và một góc nhỏ yên bình.">
+  <title>Một góc nhỏ gửi em</title>
+  <link rel="icon" href="./assets/flower.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./style.css">
+  <script type="importmap">{"imports":{"three":"./vendor/three.module.js"}}</script>
+  <script type="module" src="./app.js"></script>
+</head>
+<body data-view="locked">
+  <main id="app">
+    <div id="world" aria-hidden="true"><canvas id="scene"></canvas><div class="world-shade"></div></div>
+    <header class="page-header">
+      <span class="wordmark"><img src="./assets/flower.svg" width="22" height="22" alt=""> một góc nhỏ</span>
+      <button id="motion-toggle" class="quiet-button motion-toggle" type="button" aria-pressed="false" aria-label="Giảm chuyển động"><span aria-hidden="true">◌</span><span class="motion-label">Chậm lại một chút</span></button>
+    </header>
+
+    <section id="gate" class="gate" aria-labelledby="page-title">
+      <div class="gate-inner">
+        <p class="eyebrow"><span></span> MỘT LÁ THƯ DÀNH RIÊNG</p>
+        <h1 id="page-title">Một góc nhỏ<br><em>gửi em.</em></h1>
+        <p class="invitation">Anh để một điều nho nhỏ ở đây.</p>
+        <form id="open-form" novalidate>
+          <div class="field"><label for="account">Tài khoản</label><input id="account" name="account" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="80" aria-describedby="open-status" placeholder="Thông tin trên tấm thiệp"></div>
+          <div class="field"><label for="password">Mật khẩu</label><div class="password-wrap"><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="120" aria-describedby="open-status"><button id="password-toggle" type="button" aria-label="Hiện mật khẩu" aria-pressed="false">Hiện</button></div></div>
+          <button class="primary-button" id="open-button" type="submit"><span>Mở thư</span><span class="button-flower" aria-hidden="true">✳</span></button>
+          <p id="open-status" class="form-status" role="status" aria-live="polite"></p>
+        </form>
+        <p class="gate-footnote">Một chút bình yên, chờ em mở.</p>
+      </div>
+    </section>
+
+    <section id="letter-view" class="letter-view" hidden aria-labelledby="letter-heading">
+      <div class="letter-card">
+        <div class="letter-topline"><p class="eyebrow" id="letter-heading">GỬI EM,</p><button id="reveal-button" class="quiet-button" type="button">Hiện toàn bộ <span aria-hidden="true">↘</span></button></div>
+        <div id="letter-scroll" class="letter-scroll" tabindex="0" aria-label="Nội dung lời nhắn"><article id="letter-content"></article><span id="writing-indicator" class="writing-indicator" aria-hidden="true"></span></div>
+        <div class="letter-footer"><span class="small-flower" aria-hidden="true">✳</span><button id="explore-button" class="primary-button" type="button" hidden>Nhìn quanh một chút <span aria-hidden="true">↗</span></button></div>
+      </div>
+    </section>
+
+    <section id="explore-view" class="explore-view" hidden aria-label="Khám phá cây phượng">
+      <div class="scene-caption"><p class="eyebrow">Ở ĐÂY, MỌI THỨ CHẬM HƠN MỘT CHÚT.</p><p>Một tán phượng.<br><em>Một khoảng trời riêng.</em></p></div>
+      <p id="dialogue" class="dialogue" hidden role="status"></p>
+      <div class="explore-bottom"><p class="gesture-hint" id="gesture-hint">Kéo để nhìn quanh · Chụm để gần hơn<br><span>Thử chạm người dưới gốc cây hoặc một cụm hoa.</span></p><div class="scene-actions"><button id="reset-button" class="quiet-button scene-button" type="button"><span aria-hidden="true">↺</span> Góc nhìn ban đầu</button><button id="reread-button" class="quiet-button scene-button" type="button"><span aria-hidden="true">↗</span> Đọc lại lời nhắn</button></div></div>
+    </section>
+    <p id="scene-status" class="scene-status" role="status">Đang thắp một góc nhỏ…</p>
+    <noscript><p class="noscript-message">Em cần bật JavaScript trong trình duyệt để mở lá thư này.</p></noscript>
+  </main>
+  <aside id="music-root" aria-label="Nhạc của góc nhỏ" hidden></aside>
+</body>
+</html>

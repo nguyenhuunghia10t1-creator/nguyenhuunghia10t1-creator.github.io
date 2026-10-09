@@ -1,0 +1,11 @@
+node_modules/
+.env
+.env.*
+private/
+**/*.private.*
+**/credentials.json
+**/letter.txt
+**/screenshots/
+**/playwright-report/
+**/test-results/
+**/*.map

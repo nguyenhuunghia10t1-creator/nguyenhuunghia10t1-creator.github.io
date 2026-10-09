@@ -1,0 +1,92 @@
+# Một góc nhỏ gửi em — hướng dẫn riêng cho người quản lý mã nguồn
+
+Trang tĩnh độc lập ở `/mot-goc-nho/`. Không đưa đường dẫn vào trang chủ, menu hoặc sitemap. Không thay `CNAME`, DNS hoặc cơ chế GitHub Pages đang hoạt động.
+
+## Chạy local
+
+Cần Node.js 22 trở lên. Từ thư mục repository:
+
+```powershell
+node scripts/gift-serve.mjs
+```
+
+Mở `http://127.0.0.1:4173/mot-goc-nho/`. Server chỉ phục vụ repository, không phục vụ thư mục cha. Dùng localhost hoặc HTTPS để Web Crypto hoạt động. Không mở `index.html` bằng `file://`.
+
+## Sửa thư và đổi thông tin mở
+
+Đặt tệp riêng trong thư mục `../private`, **ngoài repository và ngoài thư mục web**:
+
+- `letter.txt`: nội dung nguyên văn UTF-8; dòng trống ngăn các đoạn.
+- `credentials.json`: thông tin mở thư do công cụ sinh. Không đưa tệp này vào Git.
+- Ảnh chụp thư, trace và báo cáo có nội dung riêng cũng phải nằm ngoài repository.
+
+Khởi tạo một lần (chỉ khi chưa có credentials.json):
+
+```powershell
+node scripts/gift-tools.mjs init --private-dir ../private
+```
+
+Sau khi sửa bản riêng `letter.txt`, mã hóa lại bằng thông tin hiện có:
+
+```powershell
+node scripts/gift-tools.mjs encrypt --private-dir ../private
+node scripts/gift-tools.mjs verify --private-dir ../private
+```
+
+Đổi mật khẩu, giữ định danh thư:
+
+```powershell
+node scripts/gift-tools.mjs rekey --private-dir ../private
+node scripts/gift-tools.mjs verify --private-dir ../private
+```
+
+`rekey` lưu thông tin trước đó vào `credentials.previous.json` tại thư mục riêng để khôi phục nếu cần. Không gửi mật khẩu bằng tham số dòng lệnh hoặc dán vào source. Mật khẩu có 20 ký tự ngẫu nhiên Crockford Base32, chia thành bốn nhóm năm ký tự. Gõ có/không dấu gạch nối, khoảng trắng khi dán và chữ thường đều được chuẩn hóa giống nhau; không đổi chữ O thành số 0 hoặc chữ I thành số 1. Tài khoản bỏ khoảng trắng hai đầu và không phân biệt hoa/thường.
+
+AES-256-GCM sử dụng PBKDF2-SHA-256 600.000 vòng, salt 16 byte và IV 12 byte mới cho mỗi lần mã hóa. Định danh thư được xác thực cùng bản mã. Bản công khai duy nhất của nội dung là `letter.enc.json`; không lưu khóa/mật khẩu/nội dung vào URL, storage hoặc analytics. Khóa không được xuất ra tệp.
+
+## Đổi nhạc
+
+Chỉnh `music-config.js` (có hướng dẫn tiếng Việt ngay đầu tệp). Cấu hình này công khai, không chứa bí mật.
+
+```js
+// File trong thư mục assets của trang:
+sourceType: 'mp3',
+sourceUrl: './assets/music.mp3',
+
+// MP3 trực tiếp qua HTTPS:
+sourceType: 'mp3',
+sourceUrl: 'https://example.com/music/bai-hat.mp3',
+
+// Video YouTube cho phép nhúng, thay VIDEO_ID bằng mã thật:
+sourceType: 'youtube',
+sourceUrl: 'https://www.youtube.com/watch?v=VIDEO_ID',
+// Hoặc: 'https://youtu.be/VIDEO_ID'
+```
+
+Đổi `title` tùy ý hoặc để rỗng; `volume` từ 0 đến 1; `loop` là true/false. `enabled:false` tắt tính năng, `sourceUrl:''` ẩn bộ điều khiển và không tải nguồn. Link xem trước/chia sẻ của dịch vụ lưu trữ không phải MP3 trực tiếp. Điện thoại có thể chỉ hỗ trợ âm lượng hệ thống. Autoplay phụ thuộc trình duyệt; nếu bị chặn, thao tác Mở thư hoặc Bật nhạc sẽ thử phát. Người đã tạm dừng/tắt tiếng không bị tự bật lại khi chuyển màn.
+
+YouTube dùng player chính thức, hiển thị tối thiểu 200×200, tạm dừng khi tab hoặc player không còn hiển thị phù hợp. YouTube có kết nối đến dịch vụ bên thứ ba và chính sách riêng; không thể tuyên bố không có theo dõi từ bên thứ ba. MP3 nội bộ không tải dịch vụ nhạc bên ngoài. Website không thêm analytics của ứng dụng.
+
+## Kiểm tra và xuất bản thay đổi
+
+```powershell
+npm.cmd run test:gift
+node scripts/gift-tools.mjs verify --private-dir ../private
+node scripts/audit-gift.mjs --private-dir ../private
+git diff --stat
+git status --short
+```
+
+Kiểm tra staged files trước commit. Chỉ đưa mã, bản mã và tài nguyên công khai lên Git; không thêm tệp riêng, screenshot/trace hoặc source map. Không cần chạy lại script build website doanh nghiệp khi chỉ sửa khu vực này.
+
+Để người nhận thấy thư/bài nhạc mới: commit các tệp thay đổi, push tới nhánh đang được Pages sử dụng, đợi workflow Pages hoàn thành rồi kiểm tra URL thật bằng tải lại. **Lưu tệp trên máy chưa cập nhật website.** Trước mỗi lần triển khai, xác minh lại Pages Settings hoặc API: nhánh, thư mục nguồn và workflow; không suy luận chỉ từ nhánh mặc định. Lúc tạo trang này, API đã xác nhận nguồn `main` + `/`, kiểu `legacy`, workflow động `pages-build-deployment`.
+
+Khôi phục bằng `git revert` commit cần bỏ và push bình thường. Không force-push hoặc xóa lịch sử.
+
+## Giới hạn riêng tư
+
+Đây là bảo vệ nội dung bằng mật khẩu ở trình duyệt, không phải tài khoản được xác thực bởi máy chủ. Mọi tài nguyên public, gồm MP3 và bản mã, vẫn tải được. Người biết mật khẩu có thể chia sẻ nội dung. `noindex` không kiểm soát quyền truy cập. Đổi mật khẩu không thu hồi bản rõ đã được chia sẻ hoặc bản mã cũ còn trong lịch sử Git. GitHub Pages có chính sách ghi nhận dữ liệu hạ tầng riêng.
+
+## Thư viện
+
+Three.js 0.186.1 và OrbitControls được lưu cùng trang dưới `vendor`; giấy phép MIT đi kèm. Không dùng CDN, framework UI, bộ theo dõi hoặc backend. Kiểm thử trình duyệt và ảnh riêng không nằm trong repository.
