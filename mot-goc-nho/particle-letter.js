@@ -1,6 +1,6 @@
 const CONVERGE_MS = 1500;
 const READ_MS = 3000;
-const DISSOLVE_MS = 2200;
+const DISSOLVE_MS = 2600;
 const FONT_FAMILY = '"Gift Noto Serif", serif';
 const clamp = (value, minimum = 0, maximum = 1) => Math.min(maximum, Math.max(minimum, value));
 const easeOutCubic = value => 1 - (1 - value) ** 3;
@@ -64,9 +64,10 @@ export function createParticleLetter({ canvas, copy, reducedMotion = false, onCo
     sprite.width = sprite.height = 16;
     const target = sprite.getContext('2d');
     const gradient = target.createRadialGradient(8, 8, 0, 8, 8, 8);
-    gradient.addColorStop(0, pink ? 'rgba(247,197,225,1)' : 'rgba(255,246,252,1)');
-    gradient.addColorStop(0.4, pink ? 'rgba(235,169,212,0.8)' : 'rgba(251,234,246,0.82)');
-    gradient.addColorStop(1, 'rgba(218,147,193,0)');
+    gradient.addColorStop(0, pink ? 'rgba(255,249,242,1)' : 'rgba(255,254,247,1)');
+    gradient.addColorStop(0.44, pink ? 'rgba(250,227,238,0.88)' : 'rgba(255,248,236,0.9)');
+    gradient.addColorStop(0.72, pink ? 'rgba(243,203,224,0.22)' : 'rgba(255,241,226,0.22)');
+    gradient.addColorStop(1, 'rgba(248,224,235,0)');
     target.fillStyle = gradient;
     target.fillRect(0, 0, 16, 16);
     return sprite;
@@ -145,10 +146,12 @@ export function createParticleLetter({ canvas, copy, reducedMotion = false, onCo
     measureContext.font = font;
     const metrics = measureContext.measureText(glyph);
     const padding = 3;
+    const maskScale = 2;
     const originX = padding + Math.max(0, metrics.actualBoundingBoxLeft || 0);
     const originY = padding + Math.max(0, metrics.actualBoundingBoxAscent || fontSize);
-    measureCanvas.width = Math.max(1, Math.ceil(originX + Math.max(metrics.actualBoundingBoxRight || 0, metrics.width) + padding));
-    measureCanvas.height = Math.max(1, Math.ceil(originY + Math.max(0, metrics.actualBoundingBoxDescent || 0) + padding));
+    measureCanvas.width = Math.max(1, Math.ceil((originX + Math.max(metrics.actualBoundingBoxRight || 0, metrics.width) + padding) * maskScale));
+    measureCanvas.height = Math.max(1, Math.ceil((originY + Math.max(0, metrics.actualBoundingBoxDescent || 0) + padding) * maskScale));
+    measureContext.setTransform(maskScale, 0, 0, maskScale, 0, 0);
     measureContext.font = font;
     measureContext.textAlign = 'left';
     measureContext.textBaseline = 'alphabetic';
@@ -156,8 +159,10 @@ export function createParticleLetter({ canvas, copy, reducedMotion = false, onCo
     measureContext.fillText(glyph, originX, originY);
     const raster = measureContext.getImageData(0, 0, measureCanvas.width, measureCanvas.height);
     const coordinates = [];
-    for (let y = 0; y < raster.height; y += 2) for (let x = 0; x < raster.width; x += 2) {
-      if (raster.data[(y * raster.width + x) * 4 + 3] > 96) coordinates.push(x, y);
+    // A 2x mask preserves thin strokes and marks. The global budget below
+    // selects a stratified subpixel cloud instead of a visible 2px grid.
+    for (let y = 0; y < raster.height; y++) for (let x = 0; x < raster.width; x++) {
+      if (raster.data[(y * raster.width + x) * 4 + 3] > 72) coordinates.push((x + 0.5) / maskScale, (y + 0.5) / maskScale);
     }
     return { coordinates, originX, originY, fontAscent: metrics.fontBoundingBoxAscent || fontSize * 1.08 };
   }
@@ -189,7 +194,7 @@ export function createParticleLetter({ canvas, copy, reducedMotion = false, onCo
         display: 'block', margin: '0', padding: '0', height: `${lineHeight}px`,
         font: `400 ${fontSize}px/${lineHeight}px ${FONT_FAMILY}`, fontSynthesis: 'none',
         fontKerning: 'normal', letterSpacing: 'normal', textAlign: 'center', whiteSpace: 'pre',
-        color: '#fae7f4', textShadow: 'none', background: 'transparent',
+        color: '#fff8ec', textShadow: '0 1px 3px #01020bdd, 0 0 5px #01020b80', background: 'transparent',
       });
       fragment.append(line);
       return line;
@@ -216,8 +221,8 @@ export function createParticleLetter({ canvas, copy, reducedMotion = false, onCo
             x: rectangle.left - canvasRectangle.left - sampled.originX,
             y: rectangle.top - canvasRectangle.top + sampled.fontAscent - sampled.originY,
             coordinates: sampled.coordinates, seed,
-            startX: (seed - 0.5) * Math.min(width * 0.7, 260),
-            startY: -35 - Math.random() * Math.min(height * 0.28, 90),
+            startX: (seed - 0.5) * Math.min(width * 0.5, 180),
+            startY: -25 - Math.random() * Math.min(height * 0.22, 65),
           });
           totalPoints += pointCount;
         }
@@ -226,12 +231,29 @@ export function createParticleLetter({ canvas, copy, reducedMotion = false, onCo
     }
     range.detach();
     const cap = mobile ? 5000 : 9000;
-    const samplingStride = Math.max(1, Math.ceil(totalPoints / cap));
+    const targetPoints = Math.min(totalPoints, cap);
+    const sampleStep = totalPoints / Math.max(1, targetPoints);
+    const sampleJitter = Math.max(0, (sampleStep - 1) / 2);
+    const sampleIndex = index => Math.floor((index + 0.5) * sampleStep + (Math.random() * 2 - 1) * sampleJitter);
     let maskPointIndex = 0;
+    let selectedPoints = 0;
+    let nextMaskSample = sampleIndex(0);
     groups = prepared.map(group => {
       const selected = [];
       for (let index = 0; index < group.coordinates.length; index += 2) {
-        if (maskPointIndex++ % samplingStride === 0) selected.push(group.coordinates[index], group.coordinates[index + 1]);
+        if (maskPointIndex++ === nextMaskSample && selectedPoints < targetPoints) {
+          const seed = Math.random();
+          selected.push(
+            group.coordinates[index] + (Math.random() - 0.5) * 0.22,
+            group.coordinates[index + 1] + (Math.random() - 0.5) * 0.22,
+            (Math.random() - 0.5) * fontSize * 1.35,
+            (Math.random() - 0.5) * fontSize * 1.5,
+            seed,
+            0.65 + seed * 0.5,
+          );
+          selectedPoints++;
+          nextMaskSample = sampleIndex(selectedPoints);
+        }
       }
       const points = new Float32Array(selected);
       const { coordinates, ...placement } = group;
@@ -255,33 +277,41 @@ export function createParticleLetter({ canvas, copy, reducedMotion = false, onCo
     for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
       const group = groups[groupIndex];
       const seed = group.seed;
-      let translateX, translateY, scatter = 0, alpha = pointOpacity, released = 0;
+      let translateX, translateY, diffusion = 0, formationFlow = 0, alpha = pointOpacity, released = 0;
       if (forming) {
         const convergence = easeOutCubic(clamp((progress - seed * 0.08) / 0.7));
         translateX = group.x + group.startX * (1 - convergence);
         translateY = group.y + group.startY * (1 - convergence);
+        formationFlow = (1 - convergence) ** 0.85;
       } else {
         released = clamp((progress - 0.32 - seed * 0.035) / (0.68 - seed * 0.035));
-        const fall = released ** 1.45;
-        translateX = group.x + Math.sin(released * 3 + seed * 7) * released * (12 + seed * 32);
+        const fall = released ** 1.75;
+        translateX = group.x + Math.sin(released * 2.4 + seed * 7) * released * (10 + seed * 24);
         translateY = group.y + fall * Math.max(80, height - group.y + 34);
-        scatter = smoothstep((released - 0.3) / 0.7) * (5 + seed * 14);
-        alpha *= 1 - smoothstep((released - 0.68) / 0.32);
+        diffusion = smoothstep(released) * (0.6 + seed * 0.5);
+        alpha *= 1 - smoothstep((released - 0.58) / 0.42);
       }
-      context.globalAlpha = alpha * (0.74 + seed * 0.2);
-      for (let point = 0; point < group.points.length / 2; point += particleStride) {
-        const x = translateX + group.points[point * 2] + Math.sin(point * 2.4 + seed * 8) * scatter;
-        const y = translateY + group.points[point * 2 + 1] + Math.cos(point * 1.7 + seed * 6) * scatter * 0.45;
-        if (!forming && released > 0.12 && (point + groupIndex) % 23 === 0) {
-          const petalHeight = 5 + seed * 5;
-          const petalWidth = petalHeight * (0.42 + Math.abs(Math.sin(released * 5 + point)) * 0.25);
+      for (let point = 0; point < group.points.length / 6; point += particleStride) {
+        const offset = point * 6;
+        const dustSeed = group.points[offset + 4];
+        const windX = group.points[offset + 2];
+        const windY = group.points[offset + 3];
+        const wave = Math.sin((forming ? progress : released) * 4 + dustSeed * Math.PI * 2);
+        // Individual dust follows curved paths inside a shared grapheme frame;
+        // a base and its marks always share the same anchor and arrival clock.
+        const x = translateX + group.points[offset] + (forming ? (windX + wave * 7) * formationFlow : windX * diffusion + wave * released * 3);
+        const y = translateY + group.points[offset + 1] + (forming ? (windY + wave * 5) * formationFlow : windY * diffusion * 0.4);
+        context.globalAlpha = alpha * (0.56 + dustSeed * 0.35);
+        if (!forming && released > 0.2 && (point + groupIndex) % 79 === 0) {
+          const petalHeight = 2.2 + dustSeed * 2;
+          const petalWidth = petalHeight * (0.38 + Math.abs(Math.sin(released * 4 + point)) * 0.22);
           context.save();
           context.translate(x, y);
-          context.rotate(seed * 7 + released * (2 + seed * 4));
+          context.rotate(dustSeed * 7 + released * (1.2 + dustSeed * 2.2));
           context.drawImage(petalSprite, -petalWidth / 2, -petalHeight / 2, petalWidth, petalHeight);
           context.restore();
         } else {
-          const size = 2.2 + seed * 0.8;
+          const size = group.points[offset + 5] * 2.25;
           context.drawImage(forming ? pointSprite : fallingSprite, x - size / 2, y - size / 2, size, size);
         }
       }

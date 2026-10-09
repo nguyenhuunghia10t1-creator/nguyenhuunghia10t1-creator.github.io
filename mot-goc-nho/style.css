@@ -30,3 +30,12 @@ body[data-letter-mode=full] .letter-scroll{align-self:end;height:min(38svh,360px
 @media(min-width:900px){body[data-letter-mode=full] .letter-space{padding-left:3vw}body[data-letter-mode=full] .letter-topline,body[data-letter-mode=full] .letter-scroll,body[data-letter-mode=full] .letter-footer{width:min(420px,36vw)}body[data-letter-mode=full] .letter-scroll{height:100%}}
 body.fallback[data-letter-mode=full] #world{background-size:100% 100%,auto 42%;background-position:center,center 12%;background-repeat:no-repeat}
 @media(max-height:680px) and (max-width:899px){body[data-letter-mode=full] .letter-scroll{height:28svh}}
+/* Reserve the whole sentence area, including long lines and drifting dust. */
+body[data-letter-mode=cinematic] .letter-space{width:100%;max-width:none}
+body[data-letter-mode=cinematic] .particle-stage{height:min(42svh,380px)}
+#particle-copy{color:#fff8ec;text-shadow:0 1px 2px #01030be6,0 0 5px #01030bb3}
+.letter-scroll{color:#fff8ec}
+@media(min-width:900px){body[data-letter-mode=cinematic] .letter-space{padding-left:3vw}body[data-letter-mode=cinematic] .letter-topline,body[data-letter-mode=cinematic] .particle-stage,body[data-letter-mode=cinematic] .letter-footer{width:min(440px,36vw)}body[data-letter-mode=cinematic] .particle-stage{height:100%;max-height:none}}
+@media(max-height:680px) and (max-width:899px){body[data-letter-mode=cinematic] .particle-stage{height:36svh;max-height:none}}
+body.fallback[data-letter-mode=cinematic] #world{background-size:100% 100%,auto 38%;background-position:center,center 12%;background-repeat:no-repeat}
+#reveal-button{text-shadow:0 1px 3px #01030b,0 0 5px #01030b}

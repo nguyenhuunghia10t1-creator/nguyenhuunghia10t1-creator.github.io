@@ -91,11 +91,15 @@ Khôi phục bằng `git revert` commit cần bỏ và push bình thường. Kh�
 
 `scene.js` tạo cây bằng BufferGeometry và shader: tán hồng/magenta nhiều lớp, nhánh cyan, quầng sáng mềm và các cánh hoa gần/xa. Hình tham chiếu không được dùng làm nền phẳng. `style.css` giữ không gian đêm tối, bố cục mở thư và chế độ đọc toàn bộ không có khung card.
 
+Trong cả hai chế độ đọc, desktop đặt chữ bên trái và cây bên phải; điện thoại dành vùng dưới cây cho toàn bộ câu, kể cả câu dài. Chữ trắng ngà có bóng tối mảnh sát nét chữ, không phủ tối hoặc làm mờ cả cảnh. Khi đọc, cây xoay chậm trong biên độ nhỏ và đung đưa bằng shader; cánh hoa rơi nhẹ. Các vệt sao băng mảnh xuất hiện thưa trong khoảng trời trống, tránh cây và vùng chữ. Giảm chuyển động sẽ dừng các chuyển động trang trí này.
+
 `particle-letter.js` chỉ nhận nội dung sau khi giải mã trong bộ nhớ. Font Noto Serif có bộ ký tự tiếng Việt được lưu ở `assets/fonts/` và khai báo trong `fonts.css`; không tải Google Fonts khi khách mở trang. Hiệu ứng chờ font sẵn sàng trước khi đo chữ. Các cụm grapheme giữ chữ cái và dấu đi cùng nhau; chuỗi dùng để vẽ được chuẩn hóa NFC, bản gốc và nội dung mã hóa giữ nguyên. Pha đọc dùng chữ HTML thật và hạt đã tắt hoàn toàn để không làm vỡ nét.
 
 Mỗi câu tụ thành từ hạt, giữ rõ khoảng 3 giây rồi tan xuống thành cánh hoa. Cảnh cây tiếp tục sáng và chuyển động; không phủ lớp tối hoặc blur khi đọc. Kết thúc sequence chuyển sang khám phá. “Đọc lại thư” luôn chạy từ câu đầu, không tự mở bản chữ tĩnh. “Hiện toàn bộ” chỉ là chế độ đọc phụ được người xem chọn: cây chuyển sang bên phải trên desktop hoặc phía trên trên điện thoại, để chữ không chồng lên tán sáng. Không lưu bản rõ vào tệp, storage hoặc log; mọi thay đổi màn giữ cùng một nguồn nhạc.
 
 Chữ dùng sprite hạt/cánh hoa đã tạo sẵn, giới hạn mật độ và DPR; điện thoại vẽ tối đa 30 khung/giây, thiết bị chậm tự giảm lượng hạt. Khi tab ẩn, chuyển động được tạm dừng. Chế độ giảm chuyển động vẫn lần lượt đọc từng câu trong 3 giây, nhưng bỏ chuyển động tụ/tan hạt; đọc lại vẫn bắt đầu từ câu đầu. Nếu không tạo được canvas chữ hoặc không tải được font, thư chuyển sang bản đọc toàn bộ. Cảnh 3D vẫn có fallback tĩnh độc lập.
+
+Mặt nạ chữ được lấy mẫu ở độ phân giải gấp đôi, với các hạt bụi nhỏ chuyển động riêng quanh cùng cụm chữ–dấu. Lõi hạt khoảng 0,65–1,15 px; các cánh hoa nhỏ xuất hiện thưa khi tan. Mỗi vùng chữ giới hạn 5.000 hạt ở chiều rộng điện thoại hoặc 9.000 hạt ở vùng rộng; pha tan kéo dài 2,6 giây, pha đọc rõ vẫn giữ 3 giây.
 
 ## Thư viện và quyền riêng tư khi kiểm tra
 

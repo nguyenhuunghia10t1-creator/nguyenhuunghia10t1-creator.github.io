@@ -1,7 +1,7 @@
 import {decryptLetter} from './crypto.js';
 import {createMusic} from './music.js';
 import musicConfig from './music-config.js';
-import {createParticleLetter} from './particle-letter.js?v=20261009-r3b';
+import {createParticleLetter} from './particle-letter.js?v=20261009-r4';
 
 const $ = id => document.getElementById(id);
 const reducedQuery = matchMedia('(prefers-reduced-motion: reduce)');
@@ -153,7 +153,7 @@ $('motion-toggle').addEventListener('click',()=>{reducedMotion=!reducedMotion;up
 reducedQuery.addEventListener('change',event=>{reducedMotion=event.matches;updateMotion();});
 updateMotion();
 function fallback(){document.body.classList.add('fallback');$('scene-status').textContent='Một góc tĩnh lặng — em vẫn có thể đọc thư bình thường.';$('gesture-hint').textContent='Một góc bình yên, để em ngồi lại một chút.';$('reset-button').hidden=true;}
-import('./scene.js?v=20261009-r3c').then(async ({createScene})=>{
+import('./scene.js?v=20261009-r4').then(async ({createScene})=>{
   scene=await createScene({canvas:$('scene'),reducedMotion,onReady:()=>{$('scene-status').textContent='';},onFallback:fallback,onDialogue:text=>{$('dialogue').textContent=text;$('dialogue').hidden=false;clearTimeout(dialogueTimer);dialogueTimer=setTimeout(()=>{$('dialogue').hidden=true;},5500);}});
   scene?.setMode(document.body.dataset.view);
   scene?.setReadingLayout?.(document.body.dataset.letterMode==='full');
