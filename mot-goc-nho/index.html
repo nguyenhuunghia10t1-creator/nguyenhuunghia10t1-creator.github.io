@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
   <meta name="referrer" content="strict-origin-when-cross-origin">
-  <meta name="theme-color" content="#070e19">
+  <meta name="theme-color" content="#02040b">
   <meta name="description" content="Một lá thư, một cây phượng, và một góc nhỏ yên bình.">
   <title>Một góc nhỏ gửi em</title>
   <link rel="icon" href="./assets/flower.svg" type="image/svg+xml">
@@ -37,10 +37,11 @@
     </section>
 
     <section id="letter-view" class="letter-view" hidden aria-labelledby="letter-heading">
-      <div class="letter-card">
+      <div class="letter-space">
         <div class="letter-topline"><p class="eyebrow" id="letter-heading">GỬI EM,</p><button id="reveal-button" class="quiet-button" type="button">Hiện toàn bộ <span aria-hidden="true">↘</span></button></div>
-        <div id="letter-scroll" class="letter-scroll" tabindex="0" aria-label="Nội dung lời nhắn"><article id="letter-content"></article><span id="writing-indicator" class="writing-indicator" aria-hidden="true"></span></div>
-        <div class="letter-footer"><span class="small-flower" aria-hidden="true">✳</span><button id="explore-button" class="primary-button" type="button" hidden>Nhìn quanh một chút <span aria-hidden="true">↗</span></button></div>
+        <div id="particle-stage" class="particle-stage" role="img" aria-label="Lời nhắn đang kết thành những hạt sáng. Chọn Hiện toàn bộ để đọc ngay."><canvas id="particle-text" aria-hidden="true"></canvas><span id="letter-progress" class="letter-progress" aria-hidden="true"></span></div>
+        <div id="letter-scroll" class="letter-scroll" tabindex="0" aria-label="Nội dung lời nhắn" hidden><article id="letter-content"></article></div>
+        <div class="letter-footer"><button id="replay-button" class="quiet-button" type="button" hidden>Xem lại hiệu ứng <span aria-hidden="true">⤴</span></button><button id="explore-button" class="primary-button" type="button" hidden>Nhìn quanh một chút <span aria-hidden="true">↗</span></button></div>
       </div>
     </section>
 

@@ -87,6 +87,14 @@ Khôi phục bằng `git revert` commit cần bỏ và push bình thường. Kh�
 
 Đây là bảo vệ nội dung bằng mật khẩu ở trình duyệt, không phải tài khoản được xác thực bởi máy chủ. Mọi tài nguyên public, gồm MP3 và bản mã, vẫn tải được. Người biết mật khẩu có thể chia sẻ nội dung. `noindex` không kiểm soát quyền truy cập. Đổi mật khẩu không thu hồi bản rõ đã được chia sẻ hoặc bản mã cũ còn trong lịch sử Git. GitHub Pages có chính sách ghi nhận dữ liệu hạ tầng riêng.
 
-## Thư viện
+## Giao diện và hiệu ứng
+
+`scene.js` tạo cây bằng BufferGeometry và shader: tán hồng/magenta nhiều lớp, nhánh cyan, quầng sáng mềm và các cánh hoa gần/xa. Hình tham chiếu không được dùng làm nền phẳng. `style.css` giữ không gian đêm tối, bố cục mở thư và chế độ đọc toàn bộ không có khung card.
+
+`particle-letter.js` chỉ nhận nội dung sau khi giải mã trong bộ nhớ. Canvas lấy mẫu nét chữ tiếng Việt một lần mỗi câu, cho hạt tụ lại khoảng 1,5 giây, giữ chữ rõ 3 giây, rồi tan thành hạt/cánh hoa trong khoảng 1,7 giây. Không lưu bản rõ vào tệp, storage hoặc log. Nút “Hiện toàn bộ” hủy hiệu ứng và hiện nguyên văn; “Xem lại hiệu ứng” khởi động lại phần chữ mà không khởi động lại nhạc.
+
+Chữ dùng sprite hạt/cánh hoa đã tạo sẵn, giới hạn mật độ và DPR; điện thoại vẽ tối đa 30 khung/giây, thiết bị chậm tự giảm lượng hạt. Khi tab ẩn, chuyển động được tạm dừng. Giảm chuyển động hoặc không tạo được canvas chữ sẽ chuyển ngay sang bản đọc toàn bộ. Cảnh 3D vẫn có fallback tĩnh độc lập.
+
+## Thư viện và quyền riêng tư khi kiểm tra
 
 Three.js 0.186.1 và OrbitControls được lưu cùng trang dưới `vendor`; giấy phép MIT đi kèm. Không dùng CDN, framework UI, bộ theo dõi hoặc backend. Kiểm thử trình duyệt và ảnh riêng không nằm trong repository.

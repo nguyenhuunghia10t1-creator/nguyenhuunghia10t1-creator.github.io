@@ -3,12 +3,12 @@ import { OrbitControls } from './vendor/OrbitControls.js';
 
 // All geometry is original, deterministic point geometry. No image of a tree is used.
 const PALETTE = {
-  bark: ['#71432a', '#8e5832', '#ad753e', '#bd8749', '#d6a25f'],
-  leaves: ['#213d34', '#315740', '#436342', '#60774c', '#829058'],
-  flowers: ['#a33124', '#c73b27', '#e04a2c', '#ef6634', '#f0803e', '#eaa846'],
-  man: ['#c6b28a', '#e4d1a9', '#fff0c8'],
-  pot: ['#7b4737', '#a96547', '#c58460'],
-  succulent: ['#3e7964', '#659c78', '#9eb991', '#bcd0a1'],
+  bark: ['#15556c', '#1d819b', '#36b1ca', '#69d5e2', '#a2edf0'],
+  leaves: ['#442c4d', '#643251', '#864264', '#a04d7b', '#bc6b9b'],
+  flowers: ['#752653', '#a12c72', '#c4438a', '#de559e', '#de72ae', '#f4abcd'],
+  man: ['#aebbc9', '#d4cdda', '#f2e1de'],
+  pot: ['#5a3f52', '#895769', '#bd8a9a'],
+  succulent: ['#356b67', '#589084', '#95b3a1', '#b9cfbe'],
 };
 
 function seeded(seed = 917226) {
@@ -62,7 +62,7 @@ class PointCloud {
   }
 }
 
-function pointMaterial(uniforms, { opacity = 1, glow = false } = {}) {
+function pointMaterial(uniforms, { opacity = 1, glow = false, sizeMultiplier = 1, petal = false } = {}) {
   return new THREE.ShaderMaterial({
     uniforms: {
       uTime: uniforms.time,
@@ -70,6 +70,9 @@ function pointMaterial(uniforms, { opacity = 1, glow = false } = {}) {
       uMotion: uniforms.motion,
       uExposure: uniforms.exposure,
       uOpacity: { value: opacity },
+      uSizeMultiplier: { value: sizeMultiplier },
+      uGlow: { value: glow ? 1 : 0 },
+      uPetal: { value: petal ? 1 : 0 },
     },
     vertexColors: true,
     transparent: true,
@@ -82,8 +85,10 @@ function pointMaterial(uniforms, { opacity = 1, glow = false } = {}) {
       uniform float uTime;
       uniform float uPixelRatio;
       uniform float uMotion;
+      uniform float uSizeMultiplier;
       varying vec3 vColor;
       varying float vDepth;
+      varying float vPhase;
       void main() {
         vec3 p = position;
         p.x += sin(uTime * 0.43 + aPhase + p.y * 0.19) * aSway * uMotion;
@@ -91,23 +96,37 @@ function pointMaterial(uniforms, { opacity = 1, glow = false } = {}) {
         vec4 mv = modelViewMatrix * vec4(p, 1.0);
         vColor = color;
         vDepth = -mv.z;
+        vPhase = aPhase;
         gl_Position = projectionMatrix * mv;
-        gl_PointSize = clamp(aSize * uPixelRatio * 43.0 / max(1.0, -mv.z), 0.8 * uPixelRatio, 6.5 * uPixelRatio);
+        gl_PointSize = clamp(aSize * uSizeMultiplier * uPixelRatio * 43.0 / max(1.0, -mv.z), 0.8 * uPixelRatio, 11.0 * uPixelRatio);
       }
     `,
     fragmentShader: `
       uniform float uExposure;
       uniform float uOpacity;
+      uniform float uTime;
+      uniform float uMotion;
+      uniform float uGlow;
+      uniform float uPetal;
       varying vec3 vColor;
       varying float vDepth;
+      varying float vPhase;
       void main() {
-        float radius = length(gl_PointCoord - vec2(0.5)) * 2.0;
+        vec2 q = gl_PointCoord - vec2(0.5);
+        if (uPetal > 0.5) {
+          float angle = uTime * 0.46 * uMotion + vPhase;
+          q = mat2(cos(angle), -sin(angle), sin(angle), cos(angle)) * q;
+          q.x *= 1.0 + abs(sin(angle * 0.67)) * 0.62;
+          q.y *= 1.55;
+        }
+        float radius = length(q) * 2.0;
         if (radius > 1.0) discard;
         float alpha = (1.0 - smoothstep(0.16, 1.0, radius)) * uOpacity;
+        if (uGlow > 0.5) alpha = exp(-radius * radius * 4.4) * (1.0 - smoothstep(0.72, 1.0, radius)) * uOpacity;
         float center = 1.0 - smoothstep(0.0, 0.4, radius);
         vec3 c = vColor * (0.87 + center * 0.28) * uExposure;
         float fog = smoothstep(33.0, 85.0, vDepth);
-        c = mix(c, vec3(0.008, 0.014, 0.022), fog * 0.54);
+        c = mix(c, vec3(0.003, 0.007, 0.017), fog * 0.54);
         gl_FragColor = vec4(c, alpha);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -151,17 +170,17 @@ function buildTree(random, density) {
     addTube(wood, [[0.02, 0.54, 0], [Math.cos(angle) * 0.49, 0.17, Math.sin(angle) * 0.43], [Math.cos(angle) * length, 0.018, Math.sin(angle) * length]], 0.19, 0.016, count(390), PALETTE.bark, { size: 0.95 });
   }
 
-  // Broad, ascending forks and flattened frond tiers describe a flamboyant crown.
+  // Broad ascending forks carry nested blossom tiers, each with a real depth axis.
   const limbs = [
-    { start: [0.05, 2.48, 0.0], bend: [-1.3, 4.37, 0.0], end: [-4.55, 5.80, 0.35], radius: 0.27 },
+    { start: [0.05, 2.48, 0.0], bend: [-1.5, 3.94, 0.0], end: [-4.90, 4.95, 0.45], radius: 0.27 },
     { start: [0.0, 3.05, -0.1], bend: [-1.54, 5.24, -0.65], end: [-4.05, 7.11, -0.96], radius: 0.245 },
     { start: [0.05, 3.53, -0.06], bend: [-0.9, 5.95, -0.90], end: [-2.52, 8.10, -1.19], radius: 0.21 },
     { start: [-0.05, 3.98, -0.1], bend: [-0.37, 6.31, -0.14], end: [-0.8, 8.65, -0.34], radius: 0.17 },
     { start: [0.01, 3.5, -0.12], bend: [0.90, 6.18, -0.58], end: [1.33, 8.35, -0.85], radius: 0.23 },
     { start: [0.1, 3.07, -0.03], bend: [1.94, 5.38, -0.72], end: [3.68, 7.63, -1.15], radius: 0.26 },
     { start: [0.12, 2.88, 0.05], bend: [2.16, 4.54, 0.16], end: [5.18, 6.20, 0.27], radius: 0.28 },
-    { start: [0.1, 2.7, 0.12], bend: [1.77, 4.55, 1.30], end: [4.26, 5.84, 2.15], radius: 0.21 },
-    { start: [0.02, 3.03, 0.08], bend: [-1.37, 4.52, 1.31], end: [-3.25, 6.27, 2.34], radius: 0.21 },
+    { start: [0.1, 2.7, 0.12], bend: [1.90, 3.98, 1.30], end: [4.90, 4.95, 2.15], radius: 0.21 },
+    { start: [0.02, 3.03, 0.08], bend: [-1.37, 4.13, 1.31], end: [-3.40, 5.33, 2.78], radius: 0.21 },
     { start: [0.06, 3.73, 0.1], bend: [0.35, 5.33, 1.78], end: [0.87, 7.47, 2.82], radius: 0.18 },
     { start: [-0.06, 3.45, -0.15], bend: [-0.30, 5.36, -1.74], end: [-1.53, 7.38, -3.02], radius: 0.19 },
     { start: [0.0, 3.17, -0.1], bend: [1.11, 4.82, -1.83], end: [3.16, 6.15, -2.91], radius: 0.17 },
@@ -190,13 +209,19 @@ function buildTree(random, density) {
         tips.push({ center: twigEnd, angle, flowerAmount: 0.30 + random() * 0.6 });
       }
     }
+    // Interior clusters bridge the outer tiers without replacing the branch topology
+    // with a spherical cloud. Their cyan support remains visible through the petals.
+    for (const t of [0.48, 0.65, 0.83]) {
+      const innerTip = branch.getPoint(t).add(new THREE.Vector3(0, 0.3, 0));
+      tips.push({ center: innerTip, angle: limbIndex + t * 5, flowerAmount: 0.68 });
+    }
     tips.push({ center: new THREE.Vector3(...limb.end), angle: limbIndex, flowerAmount: 0.8 });
   });
 
   for (let clusterIndex = 0; clusterIndex < tips.length; clusterIndex++) {
     const { center, angle, flowerAmount } = tips[clusterIndex];
-    // Bipinnate leaf sprays have an axis and paired leaflets, not spherical noise.
-    const frondCount = Math.round(5 * density) + 1;
+    // Fine dusky sprays provide depth beneath the brighter blossom surfaces.
+    const frondCount = Math.round(4 * density) + 1;
     for (let f = 0; f < frondCount; f++) {
       const phi = angle + f * 2.39996;
       const length = 0.46 + random() * 0.66;
@@ -220,7 +245,7 @@ function buildTree(random, density) {
       }
     }
     // Small five-petal rosettes collect above the flattened foliage tiers.
-    const blossomCount = Math.round((20 + flowerAmount * 34) * density);
+    const blossomCount = Math.round((25 + flowerAmount * 43) * density);
     for (let b = 0; b < blossomCount; b++) {
       const phi = random() * Math.PI * 2;
       const radius = 0.44 + flowerAmount * 0.49;
@@ -228,13 +253,13 @@ function buildTree(random, density) {
       const dome = Math.sqrt(Math.max(0, 1 - r * r / (radius * radius)));
       const blossom = center.clone().add(new THREE.Vector3(Math.cos(phi) * r, 0.10 + dome * random() * 0.83 - r * 0.06, Math.sin(phi) * r * 0.94));
       const warm = random();
-      const shade = warm > 0.96 ? 5 : Math.floor(1 + random() * 4);
+      const shade = warm > 0.985 ? 5 : Math.floor(1 + random() * 4);
       for (let petal = 0; petal < 5; petal++) {
         const theta = petal * Math.PI * 2 / 5 + phi;
         const spread = 0.025 + random() * 0.043;
-        flowers.point(blossom.x + Math.cos(theta) * spread, blossom.y + Math.sin(theta) * spread * 0.57, blossom.z + Math.sin(theta) * spread, PALETTE.flowers[shade], 1.04 + random() * 0.66, 0.028, phi);
+        flowers.point(blossom.x + Math.cos(theta) * spread, blossom.y + Math.sin(theta) * spread * 0.57, blossom.z + Math.sin(theta) * spread, PALETTE.flowers[shade], 0.93 + random() * 0.67, 0.028, phi);
       }
-      if (b % 4 === 0) flowers.point(blossom.x, blossom.y + 0.025, blossom.z, '#ffb864', 0.92, 0.026, phi);
+      if (b % 7 === 0) flowers.point(blossom.x, blossom.y + 0.025, blossom.z, '#ef9cca', 0.78, 0.026, phi);
     }
   }
 
@@ -276,7 +301,7 @@ function buildSucculent(random, density) {
   for (let i = 0; i < n(270); i++) {
     const theta = i * Math.PI * 2 / n(270);
     const r = 0.30 + random() * 0.016;
-    pot.point(Math.cos(theta) * r, 0.44 + random() * 0.029, Math.sin(theta) * r, '#d09975', 1.29);
+    pot.point(Math.cos(theta) * r, 0.44 + random() * 0.029, Math.sin(theta) * r, '#c595a5', 1.29);
   }
   const layers = [{ number: 9, length: 0.49, rise: 0.14, base: 0.47 }, { number: 7, length: 0.34, rise: 0.28, base: 0.50 }, { number: 5, length: 0.20, rise: 0.34, base: 0.54 }];
   layers.forEach((layer, layerIndex) => {
@@ -291,7 +316,7 @@ function buildSucculent(random, density) {
         const x = Math.cos(phi) * r - Math.sin(phi) * halfWidth * across;
         const z = Math.sin(phi) * r + Math.cos(phi) * halfWidth * across;
         const y = layer.base + t * layer.rise + Math.sin(Math.PI * t) * 0.08 + thickness;
-        const color = t > 0.86 ? '#c4bc96' : PALETTE.succulent[Math.floor(random() * 4)];
+        const color = t > 0.86 ? '#cfb8c6' : PALETTE.succulent[Math.floor(random() * 4)];
         leaves.point(x, y, z, color, 1.14 + random() * 0.25);
       }
     }
@@ -306,28 +331,32 @@ function buildGround(random, density) {
     const r = Math.sqrt(random()) * 11.5;
     const fade = Math.max(0, 1 - r / 11.5);
     if (random() > fade * 0.85 + 0.03) continue;
-    let color = '#284047';
+    let color = '#263440';
     const chance = random();
     if (r < 6.7 && chance < 0.29) color = PALETTE.flowers[Math.floor(random() * 4)];
-    else if (chance < 0.40) color = '#756341';
-    else if (chance < 0.69) color = '#314950';
+    else if (chance < 0.40) color = '#64435d';
+    else if (chance < 0.69) color = '#243f53';
     ground.point(Math.cos(theta) * r, -0.018 + random() * 0.028, Math.sin(theta) * r * 0.72, color, 0.63 + random() * 0.76);
   }
   const distance = new PointCloud(random);
   for (let i = 0; i < Math.round(390 * density); i++) {
-    distance.point((random() - 0.5) * 35, random() * 15 + 0.2, -6 - random() * 19, random() > 0.82 ? '#d3bd83' : '#536b7b', 0.46 + random() * 0.84, 0.025, random() * 6);
+    distance.point((random() - 0.5) * 35, random() * 15 + 0.2, -6 - random() * 19, random() > 0.82 ? '#bca2bf' : '#49627d', 0.46 + random() * 0.84, 0.025, random() * 6);
+  }
+  // A few soft nearer points give parallax without turning the scene into fireworks.
+  for (let i = 0; i < 23; i++) {
+    distance.point((random() - 0.5) * 27, random() * 13 + 0.3, 4 + random() * 8, i % 3 ? '#5a365a' : '#3d647e', 1.4 + random() * 2.0, 0.08, random() * 6);
   }
   return { ground, distance };
 }
 
-function createHalo() {
+function createHalo(pink = false) {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 128;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
   const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-  gradient.addColorStop(0, 'rgba(55,83,115,0.27)');
-  gradient.addColorStop(0.43, 'rgba(23,55,94,0.20)');
+  gradient.addColorStop(0, pink ? 'rgba(101,34,95,0.26)' : 'rgba(33,67,119,0.28)');
+  gradient.addColorStop(0.43, pink ? 'rgba(60,26,67,0.17)' : 'rgba(15,42,82,0.20)');
   gradient.addColorStop(1, 'rgba(4,12,26,0)');
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, 128, 128);
@@ -352,6 +381,10 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   let waveStarted = -100;
   let resizeObserver;
   let baseDistance = 23;
+  let exploreDistance = 23;
+  let treeWidth = 14;
+  let treeCenterX = 0;
+  let viewportWidth = window.innerWidth;
   let isPortrait = false;
   let lowQuality = false;
   let qualityDowngraded = false;
@@ -379,10 +412,10 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
 
   try {
     renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: true, powerPreference: 'low-power' });
-    renderer.setClearColor(0x060b16, 0);
+    renderer.setClearColor(0x030611, 0);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.15;
+    renderer.toneMappingExposure = 1.03;
   } catch {
     fail();
     return fallbackController;
@@ -408,18 +441,41 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
 
   const uniforms = {
     time: { value: 0 }, pixelRatio: { value: 1 },
-    motion: { value: reducedMotion ? 0 : 1 }, exposure: { value: 0.22 },
+    motion: { value: reducedMotion ? 0 : 1 }, exposure: { value: window.innerWidth >= 900 ? 0.89 : 0.58 },
   };
   const mainMaterial = pointMaterial(uniforms);
-  const flowerMaterial = pointMaterial(uniforms, { opacity: 0.96 });
+  const flowerMaterial = pointMaterial(uniforms, { opacity: 0.91 });
+  const branchMaterial = pointMaterial(uniforms, { opacity: 0.95 });
+  branchMaterial.depthWrite = true;
+  const branchGlowMaterial = pointMaterial(uniforms, { opacity: 0.19, glow: true, sizeMultiplier: 3.25 });
+  const blossomGlowMaterial = pointMaterial(uniforms, { opacity: 0.065, glow: true, sizeMultiplier: 5.2 });
+  const petalMaterial = pointMaterial(uniforms, { opacity: 0.86, sizeMultiplier: 1.30, petal: true });
   const starMaterial = pointMaterial(uniforms, { opacity: 0.58, glow: true });
-  materials.push(mainMaterial, flowerMaterial, starMaterial);
+  materials.push(mainMaterial, flowerMaterial, branchMaterial, branchGlowMaterial, blossomGlowMaterial, petalMaterial, starMaterial);
   function addCloud(cloud, material, parent = scene) {
     const geometry = cloud.geometry();
     geometries.push(geometry);
     const points = new THREE.Points(geometry, material);
     parent.add(points);
     return points;
+  }
+  function addGlow(source, material, stride, parent) {
+    const geometry = new THREE.BufferGeometry();
+    for (const [name, attribute] of Object.entries(source.geometry.attributes)) {
+      const count = Math.ceil(attribute.count / stride);
+      const values = new Float32Array(count * attribute.itemSize);
+      for (let i = 0; i < count; i++) {
+        for (let j = 0; j < attribute.itemSize; j++) {
+          values[i * attribute.itemSize + j] = attribute.array[i * stride * attribute.itemSize + j];
+        }
+      }
+      geometry.setAttribute(name, new THREE.BufferAttribute(values, attribute.itemSize));
+    }
+    geometry.computeBoundingSphere();
+    geometries.push(geometry);
+    const glow = new THREE.Points(geometry, material);
+    parent.add(glow);
+    return glow;
   }
 
   // Yield once so the opening form can paint before creating the detailed crown.
@@ -429,9 +485,14 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   const tree = new THREE.Group();
   scene.add(tree);
   const treeData = buildTree(random, density);
-  addCloud(treeData.wood, mainMaterial, tree);
+  const branches = addCloud(treeData.wood, branchMaterial, tree);
+  branches.renderOrder = 1;
   addCloud(treeData.foliage, mainMaterial, tree);
-  addCloud(treeData.flowers, flowerMaterial, tree);
+  const blossoms = addCloud(treeData.flowers, flowerMaterial, tree);
+  const cyanGlow = addGlow(branches, branchGlowMaterial, lowQuality ? 8 : 5, tree);
+  const pinkGlow = addGlow(blossoms, blossomGlowMaterial, lowQuality ? 12 : 8, tree);
+  cyanGlow.renderOrder = 2;
+  pinkGlow.renderOrder = 2;
 
   const figure = new THREE.Group();
   figure.position.set(-2.53, 0.02, 2.48);
@@ -460,9 +521,19 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     const haloMaterial = new THREE.SpriteMaterial({ map: haloTexture, transparent: true, depthWrite: false, opacity: 0.70, blending: THREE.AdditiveBlending });
     materials.push(haloMaterial);
     const halo = new THREE.Sprite(haloMaterial);
-    halo.position.set(0, 4.3, -8);
-    halo.scale.set(24, 17, 1);
+    halo.position.set(0, 3.8, -8);
+    halo.scale.set(28, 19, 1);
     scene.add(halo);
+  }
+  const pinkHaloTexture = createHalo(true);
+  if (pinkHaloTexture) {
+    textures.push(pinkHaloTexture);
+    const hazeMaterial = new THREE.SpriteMaterial({ map: pinkHaloTexture, transparent: true, depthWrite: false, opacity: 0.78, blending: THREE.AdditiveBlending });
+    materials.push(hazeMaterial);
+    const haze = new THREE.Sprite(hazeMaterial);
+    haze.position.set(0.3, 6.9, -4.5);
+    haze.scale.set(20, 12, 1);
+    scene.add(haze);
   }
 
   const floorGeometry = new THREE.PlaneGeometry(29, 21);
@@ -470,7 +541,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   const floorMaterial = new THREE.ShaderMaterial({
     uniforms: { uExposure: uniforms.exposure }, transparent: true, depthWrite: false,
     vertexShader: 'varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
-    fragmentShader: 'varying vec2 vUv; uniform float uExposure; void main(){float r=length((vUv-0.5)*2.0);float a=(1.0-smoothstep(0.03,1.0,r))*0.22;gl_FragColor=vec4(vec3(0.045,0.075,0.09)*uExposure,a);}',
+    fragmentShader: 'varying vec2 vUv; uniform float uExposure; void main(){float r=length((vUv-0.5)*2.0);float a=(1.0-smoothstep(0.03,1.0,r))*0.22;gl_FragColor=vec4(vec3(0.035,0.046,0.085)*uExposure,a);}',
   });
   materials.push(floorMaterial);
   const floor = new THREE.Mesh(floorGeometry, floorMaterial);
@@ -485,7 +556,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     petalCloud.point(0, -20, 0, PALETTE.flowers[2 + i % 3], 1.8 + random() * 0.8);
     return { active: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, phase: random() * Math.PI * 2, life: 0 };
   });
-  const petals = addCloud(petalCloud, flowerMaterial);
+  const petals = addCloud(petalCloud, petalMaterial);
   petals.frustumCulled = false;
   const petalPositions = petals.geometry.getAttribute('position');
   petalPositions.setUsage(THREE.DynamicDrawUsage);
@@ -505,11 +576,26 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
 
   const initialCamera = new THREE.Vector3();
   const initialTarget = new THREE.Vector3(0, 4.17, 0);
+  function updateFraming() {
+    const introductionAtSide = mode === 'locked' && viewportWidth >= 900;
+    if (introductionAtSide) {
+      const visibleWidth = treeWidth * 1.24 / 0.61;
+      baseDistance = Math.max(exploreDistance, visibleWidth / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect));
+      initialTarget.set(treeCenterX - visibleWidth * 0.185, 4.48, 0);
+    } else {
+      baseDistance = exploreDistance;
+      initialTarget.set(isPortrait ? treeCenterX * 0.8 : 0, isPortrait ? 4.70 : 4.26, 0);
+    }
+    initialCamera.set(initialTarget.x + (isPortrait ? 0.40 : 1.45), initialTarget.y + baseDistance * 0.095, baseDistance);
+    controls.minDistance = baseDistance * 0.63;
+    controls.maxDistance = baseDistance * 1.33;
+  }
   function resize() {
     if (disposed || failed) return;
     const rect = canvas.getBoundingClientRect();
     const width = Math.max(1, rect.width || window.innerWidth);
     const height = Math.max(1, rect.height || window.innerHeight);
+    viewportWidth = width;
     isPortrait = width / height < 0.82;
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
@@ -518,20 +604,19 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     uniforms.pixelRatio.value = dpr;
     renderer.setSize(width, height, false);
     tree.scale.set(isPortrait ? 0.84 : 1, isPortrait ? 1.12 : 1, 1);
-    figure.scale.setScalar(isPortrait ? 1.07 : 1);
-    succulent.scale.setScalar(isPortrait ? 1.07 : 1);
+    figure.scale.setScalar(isPortrait ? 0.93 : 0.82);
+    succulent.scale.setScalar(isPortrait ? 1.01 : 0.90);
     tree.updateMatrixWorld(true);
     const treeBounds = new THREE.Box3().setFromObject(tree);
     const treeSize = treeBounds.getSize(new THREE.Vector3());
     const treeCenter = treeBounds.getCenter(new THREE.Vector3());
+    treeWidth = treeSize.x;
+    treeCenterX = treeCenter.x;
     // Fit the broad crown by width while preserving a recognizable foreground figure.
     const widthToFit = isPortrait ? treeSize.x * 1.12 : Math.max(15.0, treeSize.x * 1.06);
     const horizontalDistance = widthToFit / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect);
-    baseDistance = Math.max(isPortrait ? 23 : 19.7, horizontalDistance);
-    initialTarget.set(isPortrait ? treeCenter.x * 0.8 : 0, isPortrait ? 4.70 : 4.26, 0);
-    initialCamera.set(initialTarget.x + (isPortrait ? 0.40 : 1.45), initialTarget.y + baseDistance * 0.095, baseDistance);
-    controls.minDistance = baseDistance * 0.63;
-    controls.maxDistance = baseDistance * 1.33;
+    exploreDistance = Math.max(isPortrait ? 23 : 19.7, horizontalDistance + (isPortrait ? Math.max(0, treeBounds.max.z) * 0.60 : 0));
+    updateFraming();
     camera.position.copy(initialCamera);
     controls.target.copy(initialTarget);
     controls.update();
@@ -643,7 +728,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     frameTime = now;
     elapsed += delta;
     uniforms.time.value = elapsed;
-    const targetExposure = mode === 'explore' ? 1.16 : mode === 'letter' ? 0.46 : 0.23;
+    const targetExposure = mode === 'explore' ? 1.07 : mode === 'letter' ? 0.68 : viewportWidth >= 900 ? 0.95 : 0.62;
     uniforms.exposure.value = reducedMotion ? targetExposure : THREE.MathUtils.lerp(uniforms.exposure.value, targetExposure, 1 - Math.exp(-delta * 3.2));
     if (cameraTransition) {
       const t = smoothStep(0, 1.15, elapsed - cameraTransition.start);
@@ -658,20 +743,26 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
       rightArm.rotation.z = lift * (1.88 + (reducedMotion ? 0 : Math.sin(waveAge * 8) * 0.13));
     } else rightArm.rotation.z = 0;
     figure.rotation.z = reducedMotion || mode !== 'explore' ? 0 : Math.sin(elapsed * 0.85) * 0.003;
-    if (!reducedMotion && mode === 'explore') {
+    if (!reducedMotion) {
       ambientTimer += delta;
-      if (ambientTimer > 1.7) {
+      const interval = mode === 'explore' ? 1.8 : mode === 'letter' ? 3.8 : 2.8;
+      if (ambientTimer > interval) {
         ambientTimer = 0;
         const tip = treeData.tips[Math.floor(random() * treeData.tips.length)].center.clone();
         tree.updateMatrixWorld();
-        releasePetal(tip.applyMatrix4(tree.matrixWorld));
+        tip.applyMatrix4(tree.matrixWorld);
+        if (random() < 0.22) {
+          tip.z += 4.5 + random() * 4;
+          tip.x += (random() - 0.5) * 4;
+        }
+        releasePetal(tip);
       }
     }
     let changed = false;
     for (let i = 0; i < petalCount; i++) {
       const p = petalState[i];
       if (!p.active) continue;
-      if (reducedMotion || mode !== 'explore') {
+      if (reducedMotion) {
         p.active = false; petalPositions.setXYZ(i, 0, -20, 0); changed = true; continue;
       }
       p.life -= delta;
@@ -729,6 +820,14 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
       resetPerformanceWindow();
       controls.enabled = next === 'explore';
       canvas.style.touchAction = next === 'explore' ? 'none' : 'auto';
+      updateFraming();
+      if (previous !== next && next !== 'locked' && !reducedMotion) {
+        tree.updateMatrixWorld(true);
+        for (let i = 0; i < (next === 'explore' ? 18 : 12); i++) {
+          const center = treeData.tips[Math.floor(random() * treeData.tips.length)].center.clone().applyMatrix4(tree.matrixWorld);
+          releasePetal(center, true);
+        }
+      }
       if (next !== 'explore' || previous !== 'explore') reset();
     },
     reset,

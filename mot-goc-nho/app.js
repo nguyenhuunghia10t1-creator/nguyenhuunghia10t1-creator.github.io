@@ -1,6 +1,7 @@
 import {decryptLetter} from './crypto.js';
 import {createMusic} from './music.js';
 import musicConfig from './music-config.js';
+import {createParticleLetter} from './particle-letter.js';
 
 const $ = id => document.getElementById(id);
 const reducedQuery = matchMedia('(prefers-reduced-motion: reduce)');
@@ -8,12 +9,18 @@ let reducedMotion = reducedQuery.matches;
 let scene = null;
 let opening = false;
 let openedText = '';
-let typingTimer = 0;
-let typingGeneration = 0;
 let typingComplete = false;
 let dialogueTimer = 0;
 let envelopePromise;
 const music = createMusic(musicConfig, {root: $('music-root')});
+let letterEffect;
+try { letterEffect = createParticleLetter({
+  canvas: $('particle-text'),
+  onComplete: completeLetter,
+  onPhase: ({phase,unit,unitCount}) => {
+    $('letter-progress').textContent = phase === 'idle' || phase === 'complete' ? '' : `${String(unit+1).padStart(2,'0')} / ${String(unitCount).padStart(2,'0')}`;
+  }
+}); } catch { letterEffect = null; }
 try { music.init(); } catch { $('music-root').hidden = true; }
 // Reserve the real control height, including a wrapped loading/error message.
 if ('ResizeObserver' in window) {
@@ -41,8 +48,8 @@ function setView(view) {
   scene?.setMode(view);
 }
 function completeLetter() {
-  typingGeneration++;
-  clearTimeout(typingTimer);
+  letterEffect?.stop();
+  document.body.dataset.letterMode='full';
   const blocks = openedText.trimEnd().split(/\n\n/);
   $('letter-content').replaceChildren(...blocks.map((text,index)=>{
     const paragraph=document.createElement('p');
@@ -51,34 +58,24 @@ function completeLetter() {
     return paragraph;
   }));
   typingComplete=true;
-  $('writing-indicator').hidden=true;
+  $('particle-stage').hidden=true;
+  $('letter-scroll').hidden=false;
   $('reveal-button').hidden=true;
+  $('replay-button').hidden=reducedMotion||!letterEffect;
   $('explore-button').hidden=false;
 }
 function typeLetter() {
-  const generation=++typingGeneration;
-  clearTimeout(typingTimer);
   typingComplete=false;
+  document.body.dataset.letterMode='cinematic';
   $('letter-content').replaceChildren();
-  $('writing-indicator').hidden=false;
+  $('particle-stage').hidden=false;
+  $('letter-scroll').hidden=true;
   $('reveal-button').hidden=false;
+  $('replay-button').hidden=true;
   $('explore-button').hidden=true;
   $('letter-scroll').scrollTop=0;
-  if(reducedMotion || !Intl.Segmenter) { completeLetter(); return; }
-  const segmenter=new Intl.Segmenter('vi',{granularity:'grapheme'});
-  const blocks=openedText.trimEnd().split(/\n\n/).map(text=>Array.from(segmenter.segment(text),x=>x.segment));
-  let block=0,index=0,paragraph=null;
-  const step=()=>{
-    if(generation!==typingGeneration)return;
-    if(block>=blocks.length){completeLetter();return;}
-    if(index===0){paragraph=document.createElement('p');if(block===0)paragraph.className='dateline';$('letter-content').append(paragraph);}
-    const grapheme=blocks[block][index++];
-    paragraph.append(document.createTextNode(grapheme));
-    let delay=/[.!?]/u.test(grapheme)?250:/[,;:]/u.test(grapheme)?125:22;
-    if(index>=blocks[block].length){block++;index=0;delay=460;}
-    typingTimer=setTimeout(step,delay);
-  };
-  step();
+  if(reducedMotion || !letterEffect) { completeLetter(); return; }
+  try { letterEffect.start(openedText); } catch { completeLetter(); }
 }
 $('open-form').addEventListener('submit', async event=>{
   event.preventDefault();
@@ -115,7 +112,7 @@ $('open-form').addEventListener('submit', async event=>{
     status.textContent='';
     setView('letter');
     typeLetter();
-    $('letter-scroll').focus({preventScroll:true});
+    (typingComplete?$('letter-scroll'):$('reveal-button')).focus({preventScroll:true});
   } catch(error) {
     status.classList.add('error');
     status.textContent=error.message==='CRYPTO_UNAVAILABLE'||error.code==='CRYPTO_UNAVAILABLE'?'Trình duyệt này chưa mở được thư. Em thử bằng Chrome hoặc Safari mới hơn nhé.':error.code==='INVALID_ENVELOPE'||error instanceof SyntaxError?'Lá thư chưa tải đúng. Em thử tải lại trang nhé.':error.message==='LETTER_DOWNLOAD'||error instanceof TypeError?'Chưa tải được lá thư. Em kiểm tra kết nối rồi thử lại nhé.':'Thông tin chưa khớp. Em kiểm tra lại tài khoản và mật khẩu trên thiệp nhé.';
@@ -134,10 +131,11 @@ $('password-toggle').addEventListener('click',()=>{
   $('password-toggle').setAttribute('aria-pressed',String(visible));
 });
 $('reveal-button').addEventListener('click',completeLetter);
+$('replay-button').addEventListener('click',()=>{typeLetter();$('reveal-button').focus({preventScroll:true});});
 $('explore-button').addEventListener('click',()=>{if(!typingComplete)return;setView('explore');$('reread-button').focus({preventScroll:true});});
 $('reread-button').addEventListener('click',()=>{setView('letter');completeLetter();$('letter-scroll').scrollTop=0;$('letter-scroll').focus({preventScroll:true});});
 $('reset-button').addEventListener('click',()=>scene?.reset());
-function updateMotion(){document.body.classList.toggle('reduced-motion',reducedMotion);$('motion-toggle').setAttribute('aria-pressed',String(reducedMotion));$('motion-toggle').setAttribute('aria-label',reducedMotion?'Bật chuyển động nhẹ':'Giảm chuyển động');scene?.setReducedMotion(reducedMotion);if(reducedMotion&&openedText&&!typingComplete)completeLetter();}
+function updateMotion(){document.body.classList.toggle('reduced-motion',reducedMotion);$('motion-toggle').setAttribute('aria-pressed',String(reducedMotion));$('motion-toggle').setAttribute('aria-label',reducedMotion?'Bật chuyển động nhẹ':'Giảm chuyển động');scene?.setReducedMotion(reducedMotion);if(reducedMotion&&openedText&&!typingComplete)completeLetter();$('replay-button').hidden=reducedMotion||!typingComplete||!letterEffect;}
 $('motion-toggle').addEventListener('click',()=>{reducedMotion=!reducedMotion;updateMotion();});
 reducedQuery.addEventListener('change',event=>{reducedMotion=event.matches;updateMotion();});
 updateMotion();
@@ -148,5 +146,5 @@ import('./scene.js').then(async ({createScene})=>{
   // Coordinates/state only, made available to local QA without exposing the letter.
   document.addEventListener('gift:scene-probe',()=>document.dispatchEvent(new CustomEvent('gift:scene-state',{detail:scene?.getProjectionTargets?.()??null})));
 }).catch(fallback);
-window.addEventListener('pagehide',()=>{clearTimeout(typingTimer);clearTimeout(dialogueTimer);});
+window.addEventListener('pagehide',()=>{letterEffect?.stop();clearTimeout(dialogueTimer);});
 window.addEventListener('pageshow',event=>{if(event.persisted&&openedText&&!typingComplete)completeLetter();});
