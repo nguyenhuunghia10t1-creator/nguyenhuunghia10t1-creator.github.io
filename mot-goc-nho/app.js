@@ -34,7 +34,7 @@ async function loadLyrics() {
   let candidate;
   try {
     const [{createLyrics},{default:lyricsConfig}] = await Promise.all([
-      import('./lyrics.js?v=20261009-word1'), import('./lyrics-config.js?v=20261009-word1'),
+      import('./lyrics.js?v=20261009-lyricfx1'), import('./lyrics-config.js?v=20261009-word1'),
     ]);
     candidate = createLyrics({root:$('lyrics-zone'),current:$('lyrics-current'),next:$('lyrics-next'),music,config:lyricsConfig,reducedMotion,
       onAvailability:available=>scene?.setLyricsLayout?.(available)});

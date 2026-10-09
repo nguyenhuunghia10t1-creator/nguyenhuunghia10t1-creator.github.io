@@ -17,13 +17,15 @@ Chênh mốc bắt đầu giữa DTW và CTC có trung vị 93 ms, phân vị 95
 
 19 âm tiết thuộc bốn cụm `(Hah-ah...)` giữ nguyên trong nguồn nhưng có `start: null`, `end: null` và cờ kiểm tra. Tiếng hát đệm có thể chồng lên lời chính; chưa có mốc đáng tin cậy nên bộ hiển thị bỏ qua, không tự đoán hoặc chia đều. Sau khi nghe và gán mốc, có thể thiết kế dữ liệu lớp hát đệm riêng nếu chúng chồng thời gian lên lời chính.
 
-## Bộ hiển thị nhẹ
+## Chữ và bụi sáng
 
-`lyrics.js` dùng chữ HTML, CSS opacity và dịch tối đa 4 px. Không tạo lyric canvas, mặt nạ chữ, sprite hoặc particle. Mỗi âm tiết được làm hiện trong 110 ms; vị trí toàn câu được giữ sẵn để tránh xô chữ. Hai câu chỉ cùng tồn tại trong khoảng chuyển 180 ms, sau đó bỏ câu cũ.
+`lyrics.js` giữ chữ HTML Noto Serif để nét chữ và dấu tiếng Việt luôn rõ. Mỗi âm tiết vẫn bắt đầu đúng mốc trong JSON, hiện trong 110 ms; không đưa âm tiết tiếp theo lên trước hoặc kéo giãn timestamp để chờ hiệu ứng. Vị trí toàn câu được giữ sẵn để tránh xô chữ. Âm tiết đang hát có ánh sáng trắng ngà pha hồng rất nhẹ; chữ đã hát giữ màu ngà dịu.
 
-Tất cả tiến trình chữ và chuyển câu là hàm của `audio.currentTime` từ cùng phần tử nhạc. RAF chỉ lên lịch đọc vị trí audio, giới hạn 30 lần/giây; không có đồng hồ, timer hoặc nội suy media time độc lập. Chữ dừng nguyên khi tạm dừng audio. Tua, lặp, đổi tốc độ và trở lại tab đều chọn lại chữ theo audio. Giảm chuyển động vẫn hiện từng âm tiết, bỏ dịch chuyển.
+`lyric-effects.js` là lớp Canvas2D tùy chọn, tải độc lập. Bụi sáng nhỏ tụ quanh từng âm tiết từ chính mốc bắt đầu; khi chuyển câu, các hạt từ nét chữ tách ra, trôi xuống cùng vài cánh hoa xoay nhẹ. Canvas trong suốt nằm trong vùng trời dành cho lời hát, không có card, lớp phủ tối hoặc blur cây. Các mặt nạ lấy mẫu từ toàn âm tiết đã được font định hình và chuẩn hóa NFC, giữ dấu tiếng Việt cùng chữ. Mặt nạ được cache và giới hạn số lượng; mật độ thấp hơn trên điện thoại và thiết bị hạn chế.
 
-Lời chỉ hiện ở chế độ khám phá sau phần thư. Đọc lại thư ẩn lyric nhưng không thay hoặc khởi động lại MP3. Âm tiết chưa đến mốc giữ opacity 0; không hiện câu tiếp theo trước khi hát. Nguồn MP3 phải khớp `expectedSourceUrl` trong `lyrics-config.js`.
+Mọi vị trí hạt, ánh sáng, tiến trình chữ và chuyển câu đều được tính từ `audio.currentTime` của cùng phần tử nhạc. RAF chỉ lên lịch đọc vị trí audio, không có đồng hồ hoặc nội suy media time độc lập. Tạm dừng giữ nguyên cả chữ lẫn hạt; tua, lặp, đổi tốc độ và trở lại tab dựng lại đúng trạng thái theo audio. Giảm chuyển động giữ từng âm tiết đồng bộ, bỏ bụi sáng và dịch chuyển. Nếu hiệu ứng, canvas hoặc font không sẵn sàng, lời HTML vẫn hoạt động.
+
+Lời chỉ hiện ở chế độ khám phá sau phần thư. Đọc lại thư ẩn lyric nhưng không thay hoặc khởi động lại MP3. Âm tiết chưa đến mốc giữ opacity 0; không hiện câu tiếp theo trước khi hát. Đuôi bụi của câu trước có thể tiếp tục trôi ngắn sau khi chữ đã mất; đoạn nhạc dạo không có câu giả. Nguồn MP3 phải khớp `expectedSourceUrl` trong `lyrics-config.js`.
 
 ## Hiệu chỉnh
 

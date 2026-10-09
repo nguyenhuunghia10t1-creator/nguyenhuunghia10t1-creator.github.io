@@ -3,11 +3,12 @@ import {parseLrc, parseTimestampedLyrics, parseWordLyrics, lyricAtTime, wordLyri
 const EMPTY = {index: -1, text: '', nextText: '', words: [], layers: [], phase: 'empty', progress: 0, time: 0, start: null, end: null};
 const smooth = value => {const t = Math.min(1, Math.max(0, value)); return t * t * (3 - 2 * t);};
 
-/** Lightweight HTML typography driven only by the existing MP3's currentTime. */
+/** Readable native typography with optional fine dust, sampled from MP3 time. */
 export function createLyrics({root, current, next, music, config = {}, reducedMotion = false, onAvailability = () => {}}) {
   let audio = null, timeline = null, status = 'idle', view = 'locked';
   let disposed = false, suspended = false, available = false, frame = 0;
   let state = {...EMPTY}, lastPaint = 0;
+  let effects = null, effectsStatus = 'idle', fontTimeout = 0;
   const rows = new Map(), listeners = [], abort = new AbortController();
   if (next) next.hidden = true;
   function listen(target, type, handler) {
@@ -28,12 +29,35 @@ export function createLyrics({root, current, next, music, config = {}, reducedMo
     document.body.classList.toggle('has-lyrics', value);
     onAvailability(value);
   }
+  function disableEffects() {
+    const failed = effects; effects = null; effectsStatus = 'unavailable';
+    try {failed?.dispose();} catch { /* A lost canvas must not stop native text. */ }
+    root.querySelector('#lyrics-dust')?.remove();
+  }
+  function effectsCall(method, ...args) {
+    if (!effects) return;
+    try {return effects[method](...args);} catch {disableEffects();}
+  }
   function clear() {
     if (root.hidden && !rows.size && root.dataset.phase === 'empty') return;
     root.hidden = true;
     root.dataset.phase = 'empty'; root.dataset.index = '-1';
     if (rows.size) {current.replaceChildren(); rows.clear();}
     current.removeAttribute('aria-label');
+    effectsCall('clear');
+  }
+  function effectLayers() {
+    if (!effects || reducedMotion || !timeline?.wordLevel || audio?.ended) return [];
+    const fade = Math.max(.02, (config.crossfadeMs ?? 180) / 1000);
+    const hold = Math.max(0, (config.lineHoldMs ?? 900) / 1000);
+    const duration = Math.min(timeline.duration ?? Infinity, Number.isFinite(audio.duration) ? audio.duration : Infinity);
+    const layers = [];
+    timeline.cues.forEach((cue, index) => {
+      const end = Math.min(cue.displayEnd ?? cue.end + hold, timeline.cues[index + 1]?.time + fade || Infinity, duration);
+      const release = end - fade;
+      if (state.time >= release && state.time < release + 1.45 && cue.time <= state.time) layers.push({index, cue, release});
+    });
+    return layers;
   }
   function buildRow(layer) {
     const row = document.createElement('div');
@@ -54,26 +78,38 @@ export function createLyrics({root, current, next, music, config = {}, reducedMo
     rows.set(layer.index, result);
     return result;
   }
-  function paint() {
-    const active = new Set(state.layers.map(layer => layer.index));
+  function paint(releases = []) {
+    const active = new Set([...state.layers, ...releases].map(layer => layer.index));
     for (const [index, row] of rows) if (!active.has(index)) {row.row.remove(); rows.delete(index);}
     const reveal = Math.max(.02, (config.wordRevealMs ?? 110) / 1000);
-    for (const layer of state.layers) {
+    const nativeLayers = new Map(state.layers.map(layer => [layer.index, layer]));
+    const records = new Map(releases.map(layer => [layer.index, layer]));
+    for (const layer of state.layers) if (!records.has(layer.index)) records.set(layer.index, {...layer, release: null});
+    for (const layer of records.values()) {
       const row = rows.get(layer.index) || buildRow(layer);
-      const opacity = reducedMotion ? (layer.index === state.index ? 1 : 0) : layer.opacity;
-      const translateY = reducedMotion ? 0 : layer.translateY;
+      const native = nativeLayers.get(layer.index);
+      const opacity = native ? reducedMotion ? (layer.index === state.index ? 1 : 0) : native.opacity : 0;
+      const translateY = reducedMotion ? 0 : native?.translateY || 0;
       if (row.opacity !== opacity) {row.row.style.opacity = String(opacity); row.opacity = opacity;}
       if (row.translateY !== translateY) {row.row.style.transform = `translateY(${translateY}px)`; row.translateY = translateY;}
       for (const item of row.nodes) {
         const progress = state.time < item.word.start ? 0 : reducedMotion ? 1 : smooth((state.time - item.word.start) / reveal);
-        if (progress === item.progress) continue;
-        item.node.style.opacity = String(progress);
-        item.node.style.transform = `translateY(${(1 - progress) * 4}px)`;
-        item.node.dataset.revealed = String(state.time >= item.word.start);
-        item.progress = progress;
+        const singing = state.time >= item.word.start && state.time < (item.word.end ?? item.word.start + .4);
+        if (item.node.dataset.singing !== String(singing)) item.node.dataset.singing = String(singing);
+        const revealed = String(state.time >= item.word.start);
+        if (item.node.dataset.revealed !== revealed) item.node.dataset.revealed = revealed;
+        if (progress !== item.progress) {
+          item.node.style.opacity = String(progress);
+          item.node.style.transform = `translateY(${reducedMotion ? 0 : (1 - progress) * 2}px)`;
+          item.progress = progress;
+        }
       }
+      layer.row = row;
     }
-    if (current.getAttribute('aria-label') !== state.text) current.setAttribute('aria-label', state.text);
+    const revealedText = state.words.filter(word => word.start <= state.time).map((word, index) => `${index && word.spaceBefore !== false ? ' ' : ''}${word.text}`).join('');
+    if (current.getAttribute('aria-label') !== revealedText) current.setAttribute('aria-label', revealedText);
+    effectsCall('render', state.time, [...records.values()], reducedMotion);
+    root.dataset.effects = effectsCall('getState')?.effectPhase || 'native';
     if (root.dataset.phase !== state.phase) root.dataset.phase = state.phase;
     if (root.dataset.index !== String(state.index)) root.dataset.index = String(state.index);
   }
@@ -91,9 +127,10 @@ export function createLyrics({root, current, next, music, config = {}, reducedMo
       state.words = state.text ? [{text: state.text, start: state.start}] : [];
       state.layers = state.text ? [{index: state.index, cue: {words: state.words}, opacity: 1, translateY: 0}] : [];
     }
-    if (!state.layers.length) {clear(); return;}
+    const releases = effectLayers();
+    if (!state.layers.length && !releases.length) {clear(); return;}
     if (root.hidden) root.hidden = false;
-    paint();
+    paint(releases);
   }
   function stopFrame() {cancelAnimationFrame(frame); frame = 0;}
   function schedule() {
@@ -101,7 +138,7 @@ export function createLyrics({root, current, next, music, config = {}, reducedMo
     frame = requestAnimationFrame(timestamp => {
       frame = 0;
       // RAF schedules observation, never advances lyric time or predicts audio position.
-      if (timestamp - lastPaint >= 1000 / 30) {sync(); lastPaint = timestamp;}
+      if (timestamp - lastPaint >= 1000 / (effects ? 60 : 30)) {sync(); lastPaint = timestamp;}
       schedule();
     });
   }
@@ -113,7 +150,8 @@ export function createLyrics({root, current, next, music, config = {}, reducedMo
       muted: audio?.muted ?? false, phase: state.phase, renderedPhase: root.dataset.phase || 'empty',
       progress: state.progress, start: state.start, end: state.end,
       revealedWords: state.words.filter(word => word.start <= state.time).map(word => word.text),
-      particleClock: state.time, particleCount: 0, cueCount: timeline?.cues.length || 0,
+      particleClock: state.time, particleCount: 0, effectPhase: 'native', effectsReady: false, effectsStatus,
+      ...effectsCall('getState'), cueCount: timeline?.cues.length || 0,
       fontReady: document.fonts?.check?.('400 24px "Gift Noto Serif"') ?? true,
       sourceMatched: sourceMatches(), offsetMs: (timeline?.offsetMs || 0) + (Number(config.offsetMs) || 0)});
   }
@@ -126,6 +164,20 @@ export function createLyrics({root, current, next, music, config = {}, reducedMo
       if (disposed || status !== 'idle') return;
       audio = music.getMediaElement?.() || null;
       if (config.enabled === false || !config.sourceUrl || !audio) {status = 'disabled'; clear(); return;}
+      effectsStatus = 'loading';
+      // A failed optional effect or font never prevents the letter or native lyrics.
+      const font = '400 24px "Gift Noto Serif"', sample = 'Nắng nghiêng mình trên bến đò';
+      const fontReady = document.fonts ? Promise.race([
+        Promise.resolve().then(() => document.fonts.load(font, sample)).then(() => document.fonts.check(font, sample)),
+        new Promise(resolve => {fontTimeout = setTimeout(() => resolve(false), 7000);}),
+      ]) : Promise.resolve(true);
+      Promise.all([import('./lyric-effects.js?v=20261009-dust1'), fontReady])
+        .then(([module, ready]) => {
+          if (disposed) return;
+          if (!ready) {effectsStatus = 'font-unavailable'; return;}
+          effects = module.createLyricEffects(root, current, refresh);
+          effectsStatus = effects ? 'ready' : 'canvas-unavailable'; refresh();
+        }).catch(() => {disableEffects();}).finally(() => clearTimeout(fontTimeout));
       for (const event of ['playing', 'play', 'pause', 'timeupdate', 'seeking', 'seeked', 'ended', 'loadedmetadata', 'ratechange', 'emptied', 'loadstart', 'error']) listen(audio, event, refresh);
       status = 'loading'; clear();
       try {
@@ -142,8 +194,8 @@ export function createLyrics({root, current, next, music, config = {}, reducedMo
       }
     },
     setView(value) {view = value; stopFrame(); refresh();},
-    setReducedMotion(value) {reducedMotion = Boolean(value); refresh();},
+    setReducedMotion(value) {reducedMotion = Boolean(value); effectsCall('invalidate'); refresh();},
     getState,
-    dispose() {if (disposed) return; disposed = true; abort.abort(); stopFrame(); listeners.forEach(cleanup => cleanup()); clear(); publishAvailability(false);},
+    dispose() {if (disposed) return; disposed = true; abort.abort(); clearTimeout(fontTimeout); stopFrame(); listeners.forEach(cleanup => cleanup()); clear(); effectsCall('dispose'); publishAvailability(false);},
   };
 }
