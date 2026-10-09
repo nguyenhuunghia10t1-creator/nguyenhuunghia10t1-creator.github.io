@@ -688,6 +688,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   let meteorTimer = 0;
   let nextMeteorDelay = 1.7;
   let meteorSpawned = 0;
+  let meteorLayerCursor = 0;
   let meteorSkipped = 0;
   let meteorPeakActive = 0;
   const meteorTimeline = [];
@@ -764,19 +765,30 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
       for (let burstIndex = 0; burstIndex < burst; burstIndex++) {
         const slot = meteorSlots.slice(0, cap).find(item => !item.active);
         if (!slot) break;
-        const layer = meteorSpawned % 3;
+        // A temporarily unfittable layer must not prevent later layers spawning.
+        const layer = meteorLayerCursor++ % 3;
         const compact = rect.width < 600;
         const near = layer / 2;
         const baseLength = compact ? 24 + near * 14 : Math.min(122, rect.width * (0.05 + near * 0.032));
         let accepted = false;
         for (let attempt = 0; attempt < 64; attempt++) {
           const sidePath = compact && attempt >= 8 && attempt < 32;
-          const shrink = attempt >= 40 ? 0.74 : 1;
-          const length = baseLength * (0.9 + meteorRandom() * 0.16) * shrink;
-          const travel = (compact ? 34 + near * 19 : 110 + near * 78) * shrink;
+          const topPath = !compact && attempt >= 52;
+          const shrink = attempt >= 52 ? 0.48 : attempt >= 40 ? 0.74 : 1;
+          let length = baseLength * (0.9 + meteorRandom() * 0.16) * shrink;
+          let travel = (compact ? 34 + near * 19 : 110 + near * 78) * shrink;
           const angle = sidePath ? 1.23 + meteorRandom() * 0.12 : 0.36 + meteorRandom() * 0.18;
           const directionX = Math.cos(angle);
           const directionY = Math.sin(angle);
+          if (topPath) {
+            // A close-up crown can leave only a thin strip at the top. Shorten
+            // length and travel together, retaining the layer's width and glow.
+            const heightAvailable = crown.top - sky.top - 18;
+            if (heightAvailable < 12) continue;
+            const fit = Math.min(1, heightAvailable / ((length + travel) * directionY));
+            length *= fit;
+            travel *= fit;
+          }
           const spanX = (length + travel) * directionX;
           const spanY = (length + travel) * directionY;
           const left = sky.left + 3 + Math.max(0, -spanX);
@@ -785,7 +797,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
           const bottom = sky.bottom - 3 - spanY;
           if (right < left || bottom < top) continue;
           const tailX = sidePath ? (attempt % 4 < 2 ? left : right) : left + meteorRandom() * (right - left);
-          const tailY = sidePath ? THREE.MathUtils.clamp(crown.top + (crown.bottom - crown.top) * (0.50 + meteorRandom() * 0.20), top, bottom) : attempt < 8 ? top + (attempt % 4) * 9 : top + meteorRandom() * (bottom - top);
+          const tailY = topPath ? top : sidePath ? THREE.MathUtils.clamp(crown.top + (crown.bottom - crown.top) * (0.50 + meteorRandom() * 0.20), top, bottom) : attempt < 8 ? top + (attempt % 4) * 9 : top + meteorRandom() * (bottom - top);
           if (!clear(tailX, tailY, tailX + spanX, tailY + spanY)) continue;
           Object.assign(slot, {
             active: true, age: -burstIndex * 0.32, duration: 1.55 + near * 0.35 + meteorRandom() * 0.30,
@@ -1114,7 +1126,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
       averagePetalFallSpeed: activePetals.reduce((sum, p) => sum - p.vy / activePetals.length, 0),
       meteorVisible: meteors.visible, meteorSpawned,
       meteorCapacity: lowQuality || qualityDowngraded ? 3 : 4,
-      meteorPeakActive, meteorSkipped, meteorNextIn: Math.max(0, nextMeteorDelay - meteorTimer),
+      meteorPeakActive, meteorSkipped, meteorAttempted: meteorLayerCursor, meteorNextIn: Math.max(0, nextMeteorDelay - meteorTimer),
       meteorTimeline: meteorTimeline.map(item => ({ ...item })),
       meteorSkyBounds: meteorSkyBounds ? { ...meteorSkyBounds } : null,
       meteorExclusionBounds: meteorExclusionBounds.map(bounds => ({ ...bounds })),
