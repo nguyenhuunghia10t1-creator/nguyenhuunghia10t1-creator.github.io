@@ -40,6 +40,15 @@ body[data-letter-mode=cinematic] .particle-stage{height:min(42svh,380px)}
 body.fallback[data-letter-mode=cinematic] #world{background-size:100% 100%,auto 38%;background-position:center,center 12%;background-repeat:no-repeat}
 #reveal-button{text-shadow:0 1px 3px #01030b,0 0 5px #01030b}
 /* Lyrics occupy quiet sky, without a surface over the living scene. */
+/* Reading chrome only intercepts actual controls/scrollable prose. The scene
+   receives drag, wheel and pinch through the cinematic letter canvas. */
+.letter-view{pointer-events:none}
+.letter-view button,.letter-scroll{pointer-events:auto}
+.letter-actions{display:flex;align-items:center;gap:6px}
+#letter-reset-button{min-width:44px;font-size:17px}
+.dialogue{pointer-events:none}
+@media(max-width:899px){body[data-view=letter] .dialogue{top:140px;bottom:auto}}
+.gate h1{margin-bottom:36px}
 .lyrics-zone{position:absolute;top:112px;left:5.5%;width:min(360px,29vw);height:250px;pointer-events:none;overflow:hidden;contain:layout paint;isolation:isolate}
 #lyrics-current{position:absolute;inset:12px 12px 0 8px;z-index:1;color:#f8efe8;font-family:var(--serif);font-size:clamp(19px,2vw,25px);line-height:1.65;font-weight:400;font-synthesis:none;text-shadow:0 1px 2px #01030bf2,0 0 5px #01030bdd;pointer-events:none}
 .lyric-line{position:absolute;inset:0;overflow-wrap:normal}

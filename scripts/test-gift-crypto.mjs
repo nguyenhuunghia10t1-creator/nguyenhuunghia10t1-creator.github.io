@@ -116,11 +116,28 @@ test('CLI init, verify, editing and rekeying keep source and credentials outside
     const rekeyed = JSON.parse(await readFile(credentialsPath, 'utf8'));
     assert.equal(rekeyed.account, credentials.account);
     assert.notEqual(rekeyed.password, credentials.password);
+    assert.match(rekeyed.password, /^[0-9A-HJKMNP-TV-Z]{5}(?:-[0-9A-HJKMNP-TV-Z]{5}){3}$/u);
     assert.match((await run('verify')).stdout, /PASS/u);
     const publicEnvelope = JSON.parse(await readFile(path.join(fixtureRepository, 'mot-goc-nho', 'letter.enc.json'), 'utf8'));
     await assert.rejects(decryptLetter(publicEnvelope, credentials.account, credentials.password), { code: 'OPEN_FAILED' });
     assert.equal(JSON.stringify(publicEnvelope).includes(source), false);
     assert.equal(JSON.stringify(publicEnvelope).includes(rekeyed.password), false);
+    // Owner-selected values are private inputs, never a hard-coded login check.
+    const custom = {version:1,account:'OWNER-EXAMPLE',password:'24681357'};
+    await writeFile(credentialsPath, JSON.stringify(custom));
+    await run('encrypt');
+    assert.match((await run('verify')).stdout, /PASS/u);
+    const customEnvelope = JSON.parse(await readFile(path.join(fixtureRepository, 'mot-goc-nho', 'letter.enc.json'), 'utf8'));
+    assert.equal(await decryptLetter(customEnvelope, ' owner-example ', ' 2468 1357\n'), `${source}Thay đổi phục vụ kiểm thử.\n`);
+    await assert.rejects(decryptLetter(customEnvelope, rekeyed.account, rekeyed.password), {code:'OPEN_FAILED'});
+    await writeFile(credentialsPath, JSON.stringify({...custom,password:'1234567'}));
+    await assert.rejects(run('encrypt'), error => error.stderr.includes('invalid format') && !error.stderr.includes('1234567'));
+    await writeFile(credentialsPath, JSON.stringify(custom));
+    await run('rekey');
+    const regenerated = JSON.parse(await readFile(credentialsPath, 'utf8'));
+    assert.equal(regenerated.account, custom.account);
+    assert.match(regenerated.password, /^[0-9A-HJKMNP-TV-Z]{5}(?:-[0-9A-HJKMNP-TV-Z]{5}){3}$/u);
+    assert.match((await run('verify')).stdout, /PASS/u);
     await writeFile(credentialsPath, '{"password":"SYNTHETIC-SECRET-NEVER-PRINT"');
     await assert.rejects(run('verify'), (error) => error.stderr.includes('cannot be read or parsed') && !error.stderr.includes('SYNTHETIC-SECRET-NEVER-PRINT'));
   } finally {

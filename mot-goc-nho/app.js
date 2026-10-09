@@ -174,12 +174,12 @@ $('replay-button').addEventListener('click',()=>{typeLetter();$('reveal-button')
 $('explore-button').addEventListener('click',()=>{if(!typingComplete)return;setView('explore');$('reread-button').focus({preventScroll:true});});
 $('reread-button').addEventListener('click',()=>{setView('letter');typeLetter();(!letterEffect?$('letter-scroll'):$('reveal-button')).focus({preventScroll:true});});
 $('reset-button').addEventListener('click',()=>scene?.reset());
-function updateMotion(){document.body.classList.toggle('reduced-motion',reducedMotion);$('motion-toggle').setAttribute('aria-pressed',String(reducedMotion));$('motion-toggle').setAttribute('aria-label',reducedMotion?'Bật chuyển động nhẹ':'Giảm chuyển động');scene?.setReducedMotion(reducedMotion);letterEffect?.setReducedMotion(reducedMotion);lyrics.setReducedMotion(reducedMotion);$('replay-button').hidden=!typingComplete||!letterEffect;}
-$('motion-toggle').addEventListener('click',()=>{reducedMotion=!reducedMotion;updateMotion();});
+$('letter-reset-button').addEventListener('click',()=>scene?.reset());
+function updateMotion(){document.body.classList.toggle('reduced-motion',reducedMotion);scene?.setReducedMotion(reducedMotion);letterEffect?.setReducedMotion(reducedMotion);lyrics.setReducedMotion(reducedMotion);$('replay-button').hidden=!typingComplete||!letterEffect;}
 reducedQuery.addEventListener('change',event=>{reducedMotion=event.matches;updateMotion();});
 updateMotion();
-function fallback(){document.body.classList.add('fallback');$('scene-status').textContent='Một góc tĩnh lặng — em vẫn có thể đọc thư bình thường.';$('gesture-hint').textContent='Một góc bình yên, để em ngồi lại một chút.';$('reset-button').hidden=true;}
-import('./scene.js?v=20261009-r6b').then(async ({createScene})=>{
+function fallback(){document.body.classList.add('fallback');$('scene-status').textContent='Một góc tĩnh lặng — em vẫn có thể đọc thư bình thường.';$('gesture-hint').textContent='Một góc bình yên, để em ngồi lại một chút.';$('reset-button').hidden=true;$('letter-reset-button').hidden=true;}
+import('./scene.js?v=20261009-orbit1').then(async ({createScene})=>{
   scene=await createScene({canvas:$('scene'),reducedMotion,onReady:()=>{$('scene-status').textContent='';},onFallback:fallback,onDialogue:text=>{$('dialogue').textContent=text;$('dialogue').hidden=false;clearTimeout(dialogueTimer);dialogueTimer=setTimeout(()=>{$('dialogue').hidden=true;},5500);}});
   scene?.setMode(document.body.dataset.view);
   scene?.setReadingLayout?.(document.body.dataset.letterMode==='full');

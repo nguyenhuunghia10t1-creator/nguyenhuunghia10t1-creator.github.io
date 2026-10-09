@@ -42,7 +42,11 @@ async function readCredentials(filename) {
   let credentials;
   try { credentials = JSON.parse(await readFile(filename, 'utf8')); }
   catch { throw new Error('The private credentials file cannot be read or parsed.'); }
-  if (credentials?.version !== 1 || typeof credentials.account !== 'string' || typeof credentials.password !== 'string' || !/^la-thu-[0-9a-hjkmnp-tv-z]{8}$/u.test(normalizeAccount(credentials.account)) || !/^[0-9A-HJKMNP-TV-Z]{20}$/u.test(normalizePassword(credentials.password))) {
+  // Existing owner-selected details live only in the private file. Init/rekey
+  // still generate a strong random password; never embed real values here.
+  const account = normalizeAccount(credentials?.account);
+  const password = normalizePassword(credentials?.password);
+  if (credentials?.version !== 1 || typeof credentials.account !== 'string' || typeof credentials.password !== 'string' || !account || account.length > 80 || /[\u0000-\u001f\u007f]/u.test(account) || password.length < 8 || password.length > 120) {
     throw new Error('The private credentials file has an invalid format.');
   }
   return credentials;

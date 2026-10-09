@@ -6,29 +6,27 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="theme-color" content="#02040b">
-  <meta name="description" content="Một lá thư, một cây phượng, và một góc nhỏ yên bình.">
+  <meta name="description" content="Một lá thư, một cây hoa anh đào, và một góc nhỏ yên bình.">
   <title>Một góc nhỏ gửi em</title>
   <link rel="icon" href="./assets/flower.svg" type="image/svg+xml">
   <link rel="preload" href="./assets/fonts/noto-serif-latin-400.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="./assets/fonts/noto-serif-vietnamese-400.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="./fonts.css?v=20261009-r3">
-  <link rel="stylesheet" href="./style.css?v=20261009-lyricfx1">
+  <link rel="stylesheet" href="./style.css?v=20261009-orbit1">
   <script type="importmap">{"imports":{"three":"./vendor/three.module.js"}}</script>
-  <script type="module" src="./app.js?v=20261009-lyricfx1"></script>
+  <script type="module" src="./app.js?v=20261009-orbit1"></script>
 </head>
 <body data-view="locked">
   <main id="app">
     <div id="world" aria-hidden="true"><canvas id="scene"></canvas><div class="world-shade"></div></div>
     <header class="page-header">
       <span class="wordmark"><img src="./assets/flower.svg" width="22" height="22" alt=""> một góc nhỏ</span>
-      <button id="motion-toggle" class="quiet-button motion-toggle" type="button" aria-pressed="false" aria-label="Giảm chuyển động"><span aria-hidden="true">◌</span><span class="motion-label">Chậm lại một chút</span></button>
     </header>
 
     <section id="gate" class="gate" aria-labelledby="page-title">
       <div class="gate-inner">
-        <p class="eyebrow"><span></span> MỘT LÁ THƯ DÀNH RIÊNG</p>
+        <p class="eyebrow"><span></span> Dành riêng cho Nhi</p>
         <h1 id="page-title">Một góc nhỏ<br><em>gửi em.</em></h1>
-        <p class="invitation">Anh để một điều nho nhỏ ở đây.</p>
         <form id="open-form" novalidate>
           <div class="field"><label for="account">Tài khoản</label><input id="account" name="account" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="80" aria-describedby="open-status" placeholder="Thông tin trên tấm thiệp"></div>
           <div class="field"><label for="password">Mật khẩu</label><div class="password-wrap"><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="120" aria-describedby="open-status"><button id="password-toggle" type="button" aria-label="Hiện mật khẩu" aria-pressed="false">Hiện</button></div></div>
@@ -41,21 +39,21 @@
 
     <section id="letter-view" class="letter-view" hidden aria-labelledby="letter-heading">
       <div class="letter-space">
-        <div class="letter-topline"><p class="eyebrow" id="letter-heading">GỬI EM,</p><button id="reveal-button" class="quiet-button" type="button">Hiện toàn bộ <span aria-hidden="true">↘</span></button></div>
+        <div class="letter-topline"><p class="eyebrow" id="letter-heading">GỬI EM,</p><div class="letter-actions"><button id="letter-reset-button" class="quiet-button" type="button" aria-label="Trở về góc nhìn ban đầu">↺</button><button id="reveal-button" class="quiet-button" type="button">Hiện toàn bộ <span aria-hidden="true">↘</span></button></div></div>
         <div id="particle-stage" class="particle-stage"><canvas id="particle-text" aria-hidden="true"></canvas><div id="particle-copy" aria-live="off"></div><span id="letter-progress" class="letter-progress" aria-hidden="true"></span></div>
         <div id="letter-scroll" class="letter-scroll" tabindex="0" aria-label="Nội dung lời nhắn" hidden><article id="letter-content"></article></div>
         <div class="letter-footer"><button id="replay-button" class="quiet-button" type="button" hidden>Xem lại hiệu ứng <span aria-hidden="true">⤴</span></button><button id="explore-button" class="primary-button" type="button" hidden>Nhìn quanh một chút <span aria-hidden="true">↗</span></button></div>
       </div>
     </section>
 
-    <section id="explore-view" class="explore-view" hidden aria-label="Khám phá cây phượng">
+    <section id="explore-view" class="explore-view" hidden aria-label="Khám phá cây hoa anh đào">
       <div id="lyrics-zone" class="lyrics-zone" hidden aria-label="Lời bài hát đang phát">
         <div id="lyrics-current" aria-live="off"></div>
         <p id="lyrics-next" aria-hidden="true"></p>
       </div>
-      <p id="dialogue" class="dialogue" hidden role="status"></p>
       <div class="explore-bottom"><p class="gesture-hint" id="gesture-hint">Kéo để nhìn quanh · Chụm để gần hơn<br><span>Thử chạm người dưới gốc cây hoặc một cụm hoa.</span></p><div class="scene-actions"><button id="reset-button" class="quiet-button scene-button" type="button"><span aria-hidden="true">↺</span> Góc nhìn ban đầu</button><button id="reread-button" class="quiet-button scene-button" type="button"><span aria-hidden="true">↗</span> Đọc lại thư</button></div></div>
     </section>
+    <p id="dialogue" class="dialogue" hidden role="status"></p>
     <p id="scene-status" class="scene-status" role="status">Đang thắp một góc nhỏ…</p>
     <noscript><p class="noscript-message">Em cần bật JavaScript trong trình duyệt để mở lá thư này.</p></noscript>
   </main>

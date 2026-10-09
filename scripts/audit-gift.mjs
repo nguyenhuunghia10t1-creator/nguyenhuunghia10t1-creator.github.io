@@ -82,7 +82,11 @@ try {
   catch { throw new Error('Private credentials could not be read.'); }
   if (typeof credentials?.password !== 'string' || typeof credentials?.account !== 'string') throw new Error('Private credentials have an invalid format.');
   const canonicalPassword = credentials.password.replace(/[\s-]/gu, '').toUpperCase();
-  const secrets = [letter, letter.trimEnd(), ...letter.split(/\r?\n/u).filter(line => line.trim()), credentials.account, credentials.password, credentials.password.toLowerCase(), canonicalPassword, canonicalPassword.toLowerCase()];
+  // A short letter identifier may equal the explicitly public recipient label.
+  // It is not an authentication secret. Long generated identifiers are still
+  // checked; passwords and every plaintext paragraph are always checked.
+  const privateIdentifier = credentials.account.length >= 8 ? credentials.account : '';
+  const secrets = [letter, letter.trimEnd(), ...letter.split(/\r?\n/u).filter(line => line.trim()), privateIdentifier, credentials.password, credentials.password.toLowerCase(), canonicalPassword, canonicalPassword.toLowerCase()];
   const patterns = patternsFor(secrets);
   const filenames = git(['ls-files', '--cached', '--others', '--exclude-standard', '-z']).toString('utf8').split('\0').filter(Boolean);
   for (const name of new Set(filenames)) {

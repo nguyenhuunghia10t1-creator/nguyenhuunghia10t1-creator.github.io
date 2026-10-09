@@ -401,6 +401,22 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   let raf = 0;
   let frameTime = 0;
   let elapsed = 0;
+  const orbitPeriodSeconds = 480;
+  const orbitNominalRate = -Math.PI * 2 / orbitPeriodSeconds;
+  const orbitResumeDelay = 2;
+  const orbitResumeRamp = 1.4;
+  const orbitAxis = new THREE.Vector3(0, 1, 0);
+  const orbitOffset = new THREE.Vector3();
+  const currentViewOffset = new THREE.Vector2();
+  const desiredViewOffset = new THREE.Vector2();
+  let orbitClock = 0;
+  let lastInputAt = -10;
+  let lastInputKind = 'none';
+  let inputCount = 0;
+  let controlInputActive = false;
+  let manualViewDirty = false;
+  let orbitCurrentRate = 0;
+  let orbitTravelRadians = 0;
   let cameraTransition = null;
   let waveStarted = -100;
   let resizeObserver;
@@ -409,6 +425,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   let treeWidth = 14;
   let treeCenterX = 0;
   let viewportWidth = window.innerWidth;
+  let viewportHeight = window.innerHeight;
   let isPortrait = false;
   let lowQuality = false;
   let qualityDowngraded = false;
@@ -461,8 +478,10 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   controls.zoomSpeed = 0.68;
   controls.minPolarAngle = Math.PI * 0.26;
   controls.maxPolarAngle = Math.PI * 0.495;
-  controls.minAzimuthAngle = -Math.PI * 0.78;
-  controls.maxAzimuthAngle = Math.PI * 0.78;
+  controls.minAzimuthAngle = -Infinity;
+  controls.maxAzimuthAngle = Infinity;
+  controls.autoRotate = false;
+  controls.touches.TWO = THREE.TOUCH.DOLLY_ROTATE;
 
   const uniforms = {
     time: { value: 0 }, pixelRatio: { value: 1 },
@@ -844,7 +863,11 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
         const [end, side] = meteorQuadCorners[vertex];
         const x = tailX + (headX - tailX) * end - side * slot.directionY * slot.width * 0.5;
         const y = tailY + (headY - tailY) * end + side * slot.directionX * slot.width * 0.5;
-        meteorWorld.copy(meteorCenter).addScaledVector(meteorRight, (x / rect.width * 2 - 1) * halfHeight * camera.aspect).addScaledVector(meteorUp, (1 - y / rect.height * 2) * halfHeight);
+        // Undo the off-axis projection when placing screen-space meteor quads.
+        // Their tested exclusion rectangles therefore remain the actual rendered bounds.
+        meteorWorld.copy(meteorCenter)
+          .addScaledVector(meteorRight, (x / rect.width * 2 - 1 + currentViewOffset.x * 2) * halfHeight * camera.aspect)
+          .addScaledVector(meteorUp, (1 - y / rect.height * 2 - currentViewOffset.y * 2) * halfHeight);
         const index = slotIndex * 6 + vertex;
         meteorPositions.setXYZ(index, slot.active ? meteorWorld.x : 0, slot.active ? meteorWorld.y : 0, slot.active ? meteorWorld.z : 0);
         meteorStrength.setX(index, slot.strength);
@@ -860,32 +883,43 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
 
   const initialCamera = new THREE.Vector3();
   const initialTarget = new THREE.Vector3(0, 4.17, 0);
+  function applyViewOffset(offset) {
+    currentViewOffset.copy(offset);
+    if (Math.abs(offset.x) + Math.abs(offset.y) < 0.000001) camera.clearViewOffset();
+    else camera.setViewOffset(viewportWidth, viewportHeight, offset.x * viewportWidth, offset.y * viewportHeight, viewportWidth, viewportHeight);
+  }
   function updateFraming() {
+    // A small physical offset gives a genuine orbit around an off-trunk anchor.
+    // Composition uses an off-axis projection rather than a far-away orbit pivot,
+    // so a complete revolution does not sweep the crown across the lyric column.
+    const anchorX = treeCenterX * 0.8 - treeWidth * 0.055;
+    const anchorZ = treeWidth * 0.025;
+    desiredViewOffset.set(0, 0);
     const introductionAtSide = (mode === 'locked' || mode === 'letter' || (mode === 'explore' && lyricsLayout)) && viewportWidth >= 900;
     if (introductionAtSide) {
-      const visibleWidth = treeWidth * 1.24 / 0.61;
+      const visibleWidth = treeWidth * 1.34 / 0.61;
       baseDistance = Math.max(exploreDistance, visibleWidth / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect));
-      initialTarget.set(treeCenterX - visibleWidth * 0.185, 4.48, 0);
+      initialTarget.set(anchorX, 4.48, anchorZ);
+      desiredViewOffset.set(-0.20, 0);
     } else if (mode === 'letter') {
       {
         baseDistance = exploreDistance * 1.35;
-        const visibleHeight = 2 * baseDistance * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
         const skyOffset = canvas.getBoundingClientRect().height < 680 ? 0.27 : 0.23;
-        initialTarget.set(treeCenterX * 0.8, 4.4 - visibleHeight * skyOffset, 0);
+        initialTarget.set(anchorX, 4.4, anchorZ);
+        desiredViewOffset.set(0, skyOffset);
       }
     } else if (mode === 'explore' && lyricsLayout) {
       // Reserve open sky above the crown for readable lyrics on portrait screens.
-      // Camera/orbit remain the same persistent scene and interaction system.
       const compactLyrics = canvas.getBoundingClientRect().height < 680;
-      baseDistance = exploreDistance * (compactLyrics ? 1.42 : 1.12);
-      const visibleHeight = 2 * baseDistance * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-      initialTarget.set(treeCenterX * 0.8, 4.7 + visibleHeight * (compactLyrics ? 0.07 : 0.12), 0);
+      baseDistance = exploreDistance * (compactLyrics ? 1.46 : 1.18);
+      initialTarget.set(anchorX, 4.7, anchorZ);
+      desiredViewOffset.set(0, compactLyrics ? -0.07 : -0.12);
     } else {
       baseDistance = exploreDistance;
-      initialTarget.set(isPortrait ? treeCenterX * 0.8 : 0, isPortrait ? 4.70 : 4.26, 0);
+      initialTarget.set(anchorX, isPortrait ? 4.70 : 4.26, anchorZ);
     }
     const elevation = mode === 'letter' && viewportWidth < 900 ? 0.17 : 0.095;
-    initialCamera.set(initialTarget.x + (isPortrait ? 0.40 : 1.45), initialTarget.y + baseDistance * elevation, baseDistance);
+    initialCamera.set(initialTarget.x + (isPortrait ? 0.40 : 1.45), initialTarget.y + baseDistance * elevation, initialTarget.z + baseDistance);
     const compactLyricView = mode === 'explore' && lyricsLayout && viewportWidth < 900 && canvas.getBoundingClientRect().height < 680;
     controls.minDistance = baseDistance * (compactLyricView ? 0.85 : 0.63);
     controls.maxDistance = baseDistance * 1.33;
@@ -895,7 +929,11 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     const rect = canvas.getBoundingClientRect();
     const width = Math.max(1, rect.width || window.innerWidth);
     const height = Math.max(1, rect.height || window.innerHeight);
+    const oldBaseDistance = baseDistance;
+    const oldOffset = camera.position.clone().sub(controls.target);
+    const preserveManualView = manualViewDirty && oldOffset.lengthSq() > 0;
     viewportWidth = width;
+    viewportHeight = height;
     isPortrait = width / height < 0.82;
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
@@ -917,20 +955,28 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     const horizontalDistance = widthToFit / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect);
     exploreDistance = Math.max(isPortrait ? 23 : 19.7, horizontalDistance + (isPortrait ? Math.max(0, treeBounds.max.z) * 0.60 : 0));
     updateFraming();
-    camera.position.copy(initialCamera);
     controls.target.copy(initialTarget);
+    if (preserveManualView) {
+      const nextDistance = THREE.MathUtils.clamp(oldOffset.length() * baseDistance / oldBaseDistance, controls.minDistance, controls.maxDistance);
+      camera.position.copy(initialTarget).add(oldOffset.normalize().multiplyScalar(nextDistance));
+    } else camera.position.copy(initialCamera);
+    applyViewOffset(desiredViewOffset);
     controls.update();
     cameraTransition = null;
   }
 
   function reset() {
     if (disposed || failed) return;
+    manualViewDirty = false;
+    lastInputAt = orbitClock;
+    orbitCurrentRate = 0;
     if (reducedMotion) {
       camera.position.copy(initialCamera);
       controls.target.copy(initialTarget);
+      applyViewOffset(desiredViewOffset);
       controls.update();
     } else {
-      cameraTransition = { start: elapsed, fromCamera: camera.position.clone(), fromTarget: controls.target.clone() };
+      cameraTransition = { start: elapsed, fromCamera: camera.position.clone(), fromTarget: controls.target.clone(), fromViewOffset: currentViewOffset.clone() };
     }
   }
 
@@ -938,6 +984,21 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   const pointer = new THREE.Vector2();
   const pointers = new Set();
   let tap = null;
+  function interactiveMode() { return mode === 'letter' || mode === 'explore'; }
+  function registerInput(kind) {
+    if (!interactiveMode() || failed || disposed) return;
+    cameraTransition = null;
+    orbitCurrentRate = 0;
+    lastInputAt = orbitClock;
+    lastInputKind = kind;
+    inputCount++;
+    manualViewDirty = true;
+  }
+  function controlsStart() { controlInputActive = true; registerInput('controls-start'); }
+  function controlsEnd() { controlInputActive = false; registerInput('controls-end'); }
+  controls.addEventListener('start', controlsStart);
+  controls.addEventListener('end', controlsEnd);
+  cleanup.push(() => { controls.removeEventListener('start', controlsStart); controls.removeEventListener('end', controlsEnd); });
   const figureCenter = new THREE.Vector3(0.03, 0.88, 0.22);
   const flowerCenters = treeData.tips.map(tip => tip.center.clone());
   function canvasToRay(clientX, clientY) {
@@ -947,17 +1008,26 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     return raycaster.ray;
   }
   function pointerDown(event) {
-    if (mode !== 'explore') return;
+    if (!interactiveMode()) return;
+    registerInput(event.pointerType === 'touch' ? 'touch-start' : 'pointer-start');
     pointers.add(event.pointerId);
     tap = pointers.size === 1 ? { x: event.clientX, y: event.clientY, id: event.pointerId, time: performance.now() } : null;
-    cameraTransition = null;
+  }
+  function pointerMove(event) {
+    if (!pointers.has(event.pointerId)) return;
+    // Once a gesture leaves the tap tolerance, returning to its start cannot re-arm it.
+    if (tap && (pointers.size !== 1 || tap.id !== event.pointerId || Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > 8)) tap = null;
+    registerInput(event.pointerType === 'touch' ? 'touch-move' : 'pointer-move');
   }
   function pointerUp(event) {
     const wasTap = tap && tap.id === event.pointerId && pointers.size === 1 && performance.now() - tap.time < 650 && Math.hypot(event.clientX - tap.x, event.clientY - tap.y) <= 8;
     pointers.delete(event.pointerId);
+    if (pointers.size === 0) controlInputActive = false;
+    if (interactiveMode()) registerInput(event.pointerType === 'touch' ? 'touch-end' : 'pointer-end');
     tap = null;
-    if (!wasTap || mode !== 'explore' || failed) return;
+    if (!wasTap || !interactiveMode() || failed) return;
     scene.updateMatrixWorld(true);
+    camera.updateMatrixWorld(true);
     const ray = canvasToRay(event.clientX, event.clientY);
     const manSphere = new THREE.Sphere(figureCenter.clone().applyMatrix4(figure.matrixWorld), 0.90);
     if (ray.intersectsSphere(manSphere)) {
@@ -979,14 +1049,21 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
       for (let i = 0; i < 18; i++) releasePetal(nearest, true);
     }
   }
-  function pointerCancel(event) { pointers.delete(event.pointerId); tap = null; }
-  canvas.addEventListener('pointerdown', pointerDown, { passive: true });
-  canvas.addEventListener('pointerup', pointerUp, { passive: true });
-  canvas.addEventListener('pointercancel', pointerCancel, { passive: true });
+  function pointerCancel(event) { pointers.delete(event.pointerId); if (pointers.size === 0) controlInputActive = false; tap = null; registerInput('pointer-cancel'); }
+  function wheelInput() { registerInput('wheel'); }
+  // Capture runs before OrbitControls' handlers: auto motion and reset interpolation
+  // stop at the existing camera pose before the gesture can move that pose.
+  canvas.addEventListener('pointerdown', pointerDown, { passive: true, capture: true });
+  canvas.addEventListener('pointermove', pointerMove, { passive: true, capture: true });
+  canvas.addEventListener('pointerup', pointerUp, { passive: true, capture: true });
+  canvas.addEventListener('pointercancel', pointerCancel, { passive: true, capture: true });
+  canvas.addEventListener('wheel', wheelInput, { passive: true, capture: true });
   cleanup.push(() => {
-    canvas.removeEventListener('pointerdown', pointerDown);
-    canvas.removeEventListener('pointerup', pointerUp);
-    canvas.removeEventListener('pointercancel', pointerCancel);
+    canvas.removeEventListener('pointerdown', pointerDown, true);
+    canvas.removeEventListener('pointermove', pointerMove, true);
+    canvas.removeEventListener('pointerup', pointerUp, true);
+    canvas.removeEventListener('pointercancel', pointerCancel, true);
+    canvas.removeEventListener('wheel', wheelInput, true);
   });
 
   function onContextLost(event) { event.preventDefault(); fail(); }
@@ -1003,6 +1080,11 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   function visibility() {
     cancelAnimationFrame(raf);
     frameTime = 0;
+    orbitCurrentRate = 0;
+    lastInputAt = orbitClock;
+    pointers.clear();
+    tap = null;
+    controlInputActive = false;
     resetPerformanceWindow();
     if (!document.hidden && !disposed && !failed) raf = requestAnimationFrame(animate);
   }
@@ -1017,14 +1099,18 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
 
   function animate(now) {
     if (disposed || failed || document.hidden) return;
-    // Limit GPU work while opening/reading; only exploration requests the full frame rate.
-    const minimumInterval = reducedMotion ? 100 : mode === 'explore' ? 0 : 1000 / 30;
+    // Reading remains economical while idle; direct gestures and their short damping
+    // tail render at full rate so letter-mode touch is as responsive as exploration.
+    const activeReadingInput = mode === 'letter' && (controlInputActive || pointers.size > 0 || orbitClock - lastInputAt < 0.8);
+    const minimumInterval = reducedMotion ? 100 : mode === 'explore' || activeReadingInput ? 0 : 1000 / 30;
     if (frameTime && now - frameTime < minimumInterval) {
       raf = requestAnimationFrame(animate);
       return;
     }
     const rawDelta = frameTime ? (now - frameTime) / 1000 : 0;
     const delta = rawDelta ? Math.min(rawDelta, reducedMotion ? 0.15 : 0.06) : 1 / 60;
+    const orbitDelta = rawDelta ? Math.min(rawDelta, 0.25) : 1 / 60;
+    orbitClock += orbitDelta;
     frameTime = now;
     elapsed += delta;
     uniforms.time.value = elapsed;
@@ -1034,12 +1120,23 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
       const t = smoothStep(0, 1.15, elapsed - cameraTransition.start);
       camera.position.lerpVectors(cameraTransition.fromCamera, initialCamera, t);
       controls.target.lerpVectors(cameraTransition.fromTarget, initialTarget, t);
+      applyViewOffset(new THREE.Vector2().lerpVectors(cameraTransition.fromViewOffset, desiredViewOffset, t));
       if (t >= 1) cameraTransition = null;
     }
+    const eligible = mode === 'explore' && lyricsLayout && !reducedMotion;
+    const idleSeconds = Math.max(0, orbitClock - lastInputAt);
+    orbitCurrentRate = eligible && !cameraTransition && !controlInputActive && pointers.size === 0
+      ? orbitNominalRate * smoothStep(orbitResumeDelay, orbitResumeDelay + orbitResumeRamp, idleSeconds)
+      : 0;
+    if (orbitCurrentRate !== 0) {
+      const angle = orbitCurrentRate * orbitDelta;
+      orbitOffset.copy(camera.position).sub(controls.target).applyAxisAngle(orbitAxis, angle);
+      camera.position.copy(controls.target).add(orbitOffset);
+      orbitTravelRadians += angle;
+    }
     controls.update();
-    // Only the tree drifts while reading; the camera, seated figure and orbit stay put.
-    const treeDrift = mode === 'letter' && !reducedMotion ? Math.sin(elapsed * 0.035) * 0.018 + Math.sin(elapsed * 0.075) * 0.004 : 0;
-    tree.rotation.y = reducedMotion ? 0 : THREE.MathUtils.lerp(tree.rotation.y, treeDrift, 1 - Math.exp(-delta * 1.4));
+    // The camera makes the orbit. Geometry stays rooted; only its existing shader wind moves.
+    tree.rotation.y = 0;
     const waveAge = elapsed - waveStarted;
     if (waveAge < 3.1) {
       const lift = smoothStep(0, 0.42, waveAge) * (1 - smoothStep(2.45, 3.1, waveAge));
@@ -1120,12 +1217,30 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     raf = requestAnimationFrame(animate);
   }
 
+  function getOrbitState() {
+    const eligible = mode === 'explore' && lyricsLayout && !reducedMotion && !document.hidden;
+    return {
+      eligible, active: eligible && orbitCurrentRate !== 0,
+      direction: 'clockwise', periodSeconds: orbitPeriodSeconds,
+      nominalRate: orbitNominalRate, currentRate: orbitCurrentRate,
+      travelRadians: orbitTravelRadians, azimuth: controls.getAzimuthalAngle(),
+      anchor: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
+      trunk: { x: tree.position.x, y: tree.position.y, z: tree.position.z },
+      projectionOffset: { x: currentViewOffset.x, y: currentViewOffset.y },
+      inputActive: controlInputActive || pointers.size > 0, pointerCount: pointers.size,
+      inputCount, lastInputKind, idleSeconds: Math.max(0, orbitClock - lastInputAt),
+      resumeDelaySeconds: orbitResumeDelay, resumeRampSeconds: orbitResumeRamp,
+      transitioning: Boolean(cameraTransition),
+    };
+  }
+
   function getAnimationState() {
     if (failed || disposed) return null;
     const activePetals = petalState.filter(p => p.active);
     return {
       elapsed, mode, reducedMotion, lyricsLayout, hidden: document.hidden,
-      treeRotationY: tree.rotation.y, maximumTreeDrift: 0.022,
+      treeRotationY: tree.rotation.y, maximumTreeDrift: 0,
+      autoOrbit: getOrbitState(),
       swayAmplitude: reducedMotion ? 0 : 0.052,
       activePetals: activePetals.length,
       petalCapacity: petalCount, ambientSpawned, ambientInterval: ambientInterval(),
@@ -1155,21 +1270,28 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     setLyricsLayout(value) {
       if (disposed || failed || lyricsLayout === Boolean(value)) return;
       lyricsLayout = Boolean(value);
-      if (mode === 'explore') { updateFraming(); reset(); }
+      if (mode === 'explore') { updateFraming(); if (!manualViewDirty) reset(); }
     },
     setReadingLayout(value) {
       if (disposed || failed || fullReading === Boolean(value)) return;
       fullReading = Boolean(value);
-      if (mode === 'letter') { updateFraming(); reset(); }
+      if (mode === 'letter') { updateFraming(); if (!manualViewDirty) reset(); }
     },
     setMode(next) {
       if (!['locked', 'letter', 'explore'].includes(next) || disposed || failed) return;
       const previous = mode;
+      if (previous === next) return;
       mode = next;
+      manualViewDirty = false;
+      pointers.clear();
+      tap = null;
+      controlInputActive = false;
+      orbitCurrentRate = 0;
+      lastInputAt = orbitClock;
       frameTime = 0;
       resetPerformanceWindow();
-      controls.enabled = next === 'explore';
-      canvas.style.touchAction = next === 'explore' ? 'none' : 'auto';
+      controls.enabled = next === 'letter' || next === 'explore';
+      canvas.style.touchAction = controls.enabled ? 'none' : 'auto';
       updateFraming();
       if (previous !== next && next !== 'locked' && !reducedMotion) {
         tree.updateMatrixWorld(true);
@@ -1184,6 +1306,9 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     setReducedMotion(value) {
       reducedMotion = Boolean(value);
       uniforms.motion.value = reducedMotion ? 0 : 1;
+      orbitCurrentRate = 0;
+      lastInputAt = orbitClock;
+      if (reducedMotion) cameraTransition = null;
       frameTime = 0;
       resetPerformanceWindow();
     },
@@ -1214,9 +1339,10 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
         wavingArmAngle: rightArm.rotation.z,
         hand: screen(new THREE.Vector3(0.30, -0.40, 0.24).applyMatrix4(rightArm.matrixWorld)),
         pointCount: geometries.reduce((sum, geometry) => sum + (geometry.getAttribute('aSize')?.count || 0), 0),
+        autoOrbit: getOrbitState(),
         animation: typeof getAnimationState === 'function' ? getAnimationState() : null,
         performance: {
-          renderRateCap: reducedMotion ? 10 : mode === 'explore' ? null : 30,
+          renderRateCap: reducedMotion ? 10 : mode === 'explore' || (mode === 'letter' && (controlInputActive || pointers.size > 0 || orbitClock - lastInputAt < 0.8)) ? null : 30,
           downgraded: qualityDowngraded,
           lastAverageFrameMs: lastMeasuredFrameMs,
           windowSamples: measuredFrames,

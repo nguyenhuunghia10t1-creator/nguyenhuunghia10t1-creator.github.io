@@ -40,7 +40,9 @@ node scripts/gift-tools.mjs rekey --private-dir ../private
 node scripts/gift-tools.mjs verify --private-dir ../private
 ```
 
-`rekey` lưu thông tin trước đó vào `credentials.previous.json` tại thư mục riêng để khôi phục nếu cần. Không gửi mật khẩu bằng tham số dòng lệnh hoặc dán vào source. Mật khẩu có 20 ký tự ngẫu nhiên Crockford Base32, chia thành bốn nhóm năm ký tự. Gõ có/không dấu gạch nối, khoảng trắng khi dán và chữ thường đều được chuẩn hóa giống nhau; không đổi chữ O thành số 0 hoặc chữ I thành số 1. Tài khoản bỏ khoảng trắng hai đầu và không phân biệt hoa/thường.
+`rekey` lưu thông tin trước đó vào `credentials.previous.json` tại thư mục riêng để khôi phục nếu cần. Không gửi mật khẩu bằng tham số dòng lệnh hoặc dán vào source. `init` và `rekey` tạo mật khẩu 20 ký tự ngẫu nhiên Crockford Base32, chia thành bốn nhóm năm ký tự. Nếu chủ trang tự chọn tài khoản/mật khẩu, sao lưu hai tệp riêng trước, sửa `account` và `password` trong `../private/credentials.json`, rồi chạy `encrypt` và `verify`; công cụ nhận mật khẩu từ 8 ký tự sau chuẩn hóa. Mật khẩu số ngắn dễ đoán hơn mật khẩu ngẫu nhiên, dù giữ nguyên thông số mã hóa. Không ghi giá trị thật vào tài liệu công khai.
+
+Gõ có/không dấu gạch nối, khoảng trắng khi dán và chữ thường đều được chuẩn hóa giống nhau; không đổi chữ O thành số 0 hoặc chữ I thành số 1. Tài khoản bỏ khoảng trắng hai đầu và không phân biệt hoa/thường. Định danh thư không phải bí mật bảo mật; tên người nhận hiển thị công khai do chủ trang chọn. Mật khẩu và bản rõ luôn ở ngoài repository.
 
 AES-256-GCM sử dụng PBKDF2-SHA-256 600.000 vòng, salt 16 byte và IV 12 byte mới cho mỗi lần mã hóa. Định danh thư được xác thực cùng bản mã. Bản công khai duy nhất của nội dung là `letter.enc.json`; không lưu khóa/mật khẩu/nội dung vào URL, storage hoặc analytics. Khóa không được xuất ra tệp.
 
@@ -69,7 +71,7 @@ YouTube dùng player chính thức, hiển thị tối thiểu 200×200, tạm d
 
 ## Lời hát trong chế độ khám phá
 
-`lyrics-config.js` chọn JSON có mốc từng âm tiết và `offsetMs`; `LYRICS.md` ghi cách căn từ MP3 và các cờ cần nghe kiểm tra. Lời chỉ hiện trong chế độ khám phá; dùng HTML opacity và dịch nhẹ, giữ sẵn vị trí câu, không có particle lyric. Mọi pha chữ và chuyển câu lấy từ `audio.currentTime` của cùng MP3. Tạm dừng giữ nguyên chữ; tua, lặp, đổi tốc độ chọn lại theo audio. Đọc lại thư ẩn lời hát. Cây 3D, hiệu ứng thư và nguồn nhạc giữ nguyên.
+`lyrics-config.js` chọn JSON có mốc từng âm tiết và `offsetMs`; `LYRICS.md` ghi cách căn từ MP3 và các cờ cần nghe kiểm tra. Lời chỉ hiện trong chế độ khám phá; chữ HTML giữ sẵn vị trí câu và lớp bụi/cánh hoa tùy chọn trong `lyric-effects.js`. Mọi pha chữ và chuyển câu lấy từ `audio.currentTime` của cùng MP3. Tạm dừng giữ nguyên chữ; tua, lặp, đổi tốc độ chọn lại theo audio. Đọc lại thư ẩn lời hát, chạy hiệu ứng thư từ đầu và không khởi động lại MP3.
 
 ## Kiểm tra và xuất bản thay đổi
 
@@ -95,7 +97,9 @@ Khôi phục bằng `git revert` commit cần bỏ và push bình thường. Kh�
 
 `scene.js` tạo cây bằng BufferGeometry và shader: tán hồng/magenta nhiều lớp, nhánh cyan, quầng sáng mềm và các cánh hoa gần/xa. Hình tham chiếu không được dùng làm nền phẳng. `style.css` giữ không gian đêm tối, bố cục mở thư và chế độ đọc toàn bộ không có khung card.
 
-Trong cả hai chế độ đọc, desktop đặt chữ bên trái và cây bên phải; điện thoại dành vùng dưới cây cho toàn bộ câu, kể cả câu dài. Chữ trắng ngà có bóng tối mảnh sát nét chữ, không phủ tối hoặc làm mờ cả cảnh. Khi đọc, cây xoay chậm trong biên độ nhỏ và đung đưa bằng shader; cánh hoa rơi nhẹ. Các vệt sao băng mảnh xuất hiện thưa trong khoảng trời trống, tránh cây và vùng chữ. Giảm chuyển động sẽ dừng các chuyển động trang trí này.
+Trong cả hai chế độ đọc, desktop đặt chữ bên trái và cây bên phải; điện thoại dành vùng dưới cây cho toàn bộ câu, kể cả câu dài. Chữ trắng ngà có bóng tối mảnh sát nét chữ, không phủ tối hoặc làm mờ cả cảnh. Khi đọc hiệu ứng, có thể kéo/xoay, chụm và zoom ngay trên cảnh xuyên qua lớp chữ; các nút và bản đọc toàn bộ vẫn nhận thao tác riêng. Nút ↺ đưa về góc nhìn ban đầu. Các vệt sao băng và cánh hoa tiếp tục chuyển động. Trang tôn trọng `prefers-reduced-motion` của hệ điều hành; không còn nút giảm chuyển động trên giao diện.
+
+Trong chế độ khám phá có lời hát, camera đi liên tục theo chiều kim đồng hồ quanh điểm neo lệch thân cây, không quay nhóm cây để giả chuyển động camera. Chu kỳ mặc định 480 giây/vòng trong `scene.js` (`orbitPeriodSeconds`); không giới hạn góc phương vị. Phép chiếu lệch trục giữ bố cục thoáng qua cả vòng quay. Kéo/chụm/zoom hủy chuyển cảnh và dừng auto ngay; sau 2 giây không thao tác, tốc độ tăng mềm trong 1,4 giây từ vị trí hiện tại, không reset góc. Tab ẩn hoặc giảm chuyển động sẽ dừng auto. Camera là chuyển động nền của chế độ khám phá; tạm dừng MP3 vẫn giữ đúng chữ/hạt lyric theo thời gian âm thanh. Người xem có thể tự xoay/zoom đến bố cục khác; nút ↺ luôn phục hồi góc nhìn ban đầu.
 
 `particle-letter.js` chỉ nhận nội dung sau khi giải mã trong bộ nhớ. Font Noto Serif có bộ ký tự tiếng Việt được lưu ở `assets/fonts/` và khai báo trong `fonts.css`; không tải Google Fonts khi khách mở trang. Hiệu ứng chờ font sẵn sàng trước khi đo chữ. Các cụm grapheme giữ chữ cái và dấu đi cùng nhau; chuỗi dùng để vẽ được chuẩn hóa NFC, bản gốc và nội dung mã hóa giữ nguyên. Pha đọc dùng chữ HTML thật và hạt đã tắt hoàn toàn để không làm vỡ nét.
 
