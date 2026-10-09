@@ -886,7 +886,8 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     }
     const elevation = mode === 'letter' && viewportWidth < 900 ? 0.17 : 0.095;
     initialCamera.set(initialTarget.x + (isPortrait ? 0.40 : 1.45), initialTarget.y + baseDistance * elevation, baseDistance);
-    controls.minDistance = baseDistance * 0.63;
+    const compactLyricView = mode === 'explore' && lyricsLayout && viewportWidth < 900 && canvas.getBoundingClientRect().height < 680;
+    controls.minDistance = baseDistance * (compactLyricView ? 0.85 : 0.63);
     controls.maxDistance = baseDistance * 1.33;
   }
   function resize() {

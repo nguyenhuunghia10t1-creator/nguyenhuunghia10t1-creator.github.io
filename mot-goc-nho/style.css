@@ -46,5 +46,5 @@ body.fallback[data-letter-mode=cinematic] #world{background-size:100% 100%,auto 
 #lyrics-next{position:absolute;left:8px;right:12px;margin:0;line-height:1.65;font-family:var(--serif);font-weight:400;font-synthesis:none;color:#f4e6ee;text-shadow:0 1px 3px #01030b,0 0 5px #01030ba6;pointer-events:none;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 @media(max-width:899px){.lyrics-zone{top:82px;left:20px;width:calc(100% - 40px);height:190px}#lyrics-current{color:#fff8ec}}
 @media(max-height:680px) and (max-width:899px){.lyrics-zone{top:70px;left:18px;width:calc(100% - 36px);height:165px}}
-@media(max-height:679px) and (max-width:899px){body.has-lyrics[data-view=explore] .gesture-hint{display:none}}
+@media(max-height:679px) and (max-width:899px){body.has-lyrics[data-view=explore] .gesture-hint{display:none}body.has-lyrics[data-view=explore] .explore-bottom{bottom:max(86px,calc(var(--music-reserve) - 22px))}}
 body.fallback.has-lyrics[data-view=explore] #world{background-size:100% 100%,auto 58%;background-position:center,center 69%;background-repeat:no-repeat}
