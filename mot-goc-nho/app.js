@@ -179,7 +179,7 @@ function updateMotion(){document.body.classList.toggle('reduced-motion',reducedM
 reducedQuery.addEventListener('change',event=>{reducedMotion=event.matches;updateMotion();});
 updateMotion();
 function fallback(){document.body.classList.add('fallback');$('scene-status').textContent='Một góc tĩnh lặng — em vẫn có thể đọc thư bình thường.';$('gesture-hint').textContent='Một góc bình yên, để em ngồi lại một chút.';$('reset-button').hidden=true;$('letter-reset-button').hidden=true;}
-import('./scene.js?v=20261009-orbit1').then(async ({createScene})=>{
+import('./scene.js?v=20261009-orbit2').then(async ({createScene})=>{
   scene=await createScene({canvas:$('scene'),reducedMotion,onReady:()=>{$('scene-status').textContent='';},onFallback:fallback,onDialogue:text=>{$('dialogue').textContent=text;$('dialogue').hidden=false;clearTimeout(dialogueTimer);dialogueTimer=setTimeout(()=>{$('dialogue').hidden=true;},5500);}});
   scene?.setMode(document.body.dataset.view);
   scene?.setReadingLayout?.(document.body.dataset.letterMode==='full');

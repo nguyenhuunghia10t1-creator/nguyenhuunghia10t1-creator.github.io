@@ -401,7 +401,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   let raf = 0;
   let frameTime = 0;
   let elapsed = 0;
-  const orbitPeriodSeconds = 480;
+  const orbitPeriodSeconds = 180;
   const orbitNominalRate = -Math.PI * 2 / orbitPeriodSeconds;
   const orbitResumeDelay = 2;
   const orbitResumeRamp = 1.4;
@@ -426,6 +426,15 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   let treeCenterX = 0;
   let viewportWidth = window.innerWidth;
   let viewportHeight = window.innerHeight;
+  let hasSized = false;
+  let framingKey = '';
+  let safeSceneArea = null;
+  let viewportResizeCount = 0;
+  const framingBounds = new THREE.Box3();
+  let framingProfile = [];
+  const profileAnchor = new THREE.Vector2();
+  let fitRevision = 0;
+  let fitCache = null;
   let isPortrait = false;
   let lowQuality = false;
   let qualityDowngraded = false;
@@ -888,12 +897,122 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     if (Math.abs(offset.x) + Math.abs(offset.y) < 0.000001) camera.clearViewOffset();
     else camera.setViewOffset(viewportWidth, viewportHeight, offset.x * viewportWidth, offset.y * viewportHeight, viewportWidth, viewportHeight);
   }
+  function reservedSceneArea(rect) {
+    if (mode !== 'explore') return null;
+    const landscape = window.matchMedia('(min-width:600px) and (max-width:899px) and (max-height:500px)').matches;
+    const sideBySide = landscape || rect.width >= 900;
+    let left = 12;
+    const right = rect.width - 12;
+    let top = 16;
+    let bottom = Math.min(rect.height, window.innerHeight - rect.top) - 16;
+    for (const selector of ['.page-header', '#lyrics-zone', '.scene-caption']) {
+      const element = document.querySelector(selector);
+      if (!element) continue;
+      const style = getComputedStyle(element);
+      let box;
+      if (selector === '#lyrics-zone' && lyricsLayout && !element.getClientRects().length) {
+        // Instrumental gaps hide the glyphs, not their reserved sky. The fixed
+        // CSS box remains stable when the next timed lyric becomes visible.
+        // Measure an empty, nonpainting sibling so %, min() and calc() resolve
+        // exactly like the visible box without briefly exposing its contents.
+        const measure = element.cloneNode(false);
+        measure.removeAttribute('id');
+        measure.hidden = false;
+        measure.setAttribute('aria-hidden', 'true');
+        measure.style.setProperty('visibility', 'hidden', 'important');
+        measure.style.setProperty('pointer-events', 'none', 'important');
+        element.parentElement.appendChild(measure);
+        try { box = measure.getBoundingClientRect(); } finally { measure.remove(); }
+      } else {
+        if (!element.getClientRects().length || style.visibility === 'hidden') continue;
+        box = element.getBoundingClientRect();
+      }
+      if (selector !== '.page-header' && sideBySide) left = Math.max(left, box.right - rect.left + 18);
+      else top = Math.max(top, box.bottom - rect.top + 12);
+    }
+    for (const selector of ['.explore-bottom', '#music-root']) {
+      const element = document.querySelector(selector);
+      if (!element?.getClientRects().length || getComputedStyle(element).visibility === 'hidden') continue;
+      const box = element.getBoundingClientRect();
+      if (box.right - rect.left <= left || box.left - rect.left >= right) continue;
+      if (box.top < rect.bottom && box.bottom > rect.top) bottom = Math.min(bottom, box.top - rect.top - 14);
+    }
+    return { left, right, top, bottom };
+  }
+  function safeAreaKey(area) {
+    return area ? [area.left, area.right, area.top, area.bottom].map(value => value.toFixed(1)).join(':') : '';
+  }
+  function buildFramingProfile() {
+    // Cache a tight envelope by height. The wide crown must not invent an equally
+    // wide cylinder at ground level, which would unnecessarily shrink the tree.
+    profileAnchor.set(treeCenterX * 0.8 - treeWidth * 0.055, treeWidth * 0.025);
+    const bins = Array.from({ length: 24 }, () => ({ minY: Infinity, maxY: -Infinity, radius: 0 }));
+    const span = Math.max(1, framingBounds.max.y - framingBounds.min.y);
+    const point = new THREE.Vector3();
+    for (const root of [tree, figure, succulent]) {
+      root.updateMatrixWorld(true);
+      root.traverse(object => {
+        const position = object.geometry?.getAttribute('position');
+        if (!position) return;
+        for (let index = 0; index < position.count; index++) {
+          point.fromBufferAttribute(position, index).applyMatrix4(object.matrixWorld);
+          const bin = bins[THREE.MathUtils.clamp(Math.floor((point.y - framingBounds.min.y) / span * bins.length), 0, bins.length - 1)];
+          bin.minY = Math.min(bin.minY, point.y);
+          bin.maxY = Math.max(bin.maxY, point.y);
+          bin.radius = Math.max(bin.radius, Math.hypot(point.x - profileAnchor.x, point.z - profileAnchor.y));
+        }
+      });
+    }
+    framingProfile = bins.filter(bin => Number.isFinite(bin.minY)).map(bin => ({ minY: bin.minY - 0.07, maxY: bin.maxY + 0.07, radius: bin.radius + 0.09 }));
+  }
+  function fitDistance(polar, target = initialTarget, offset = desiredViewOffset) {
+    if (!safeSceneArea) return 0;
+    if (fitCache?.revision === fitRevision && Math.abs(fitCache.polar - polar) < 0.000001 && fitCache.target.distanceToSquared(target) < 0.000000001 && fitCache.offset.distanceToSquared(offset) < 0.000000001) return fitCache.distance;
+    // Each circular slice is invariant under azimuth. Its support distance fits
+    // every turn, including the closest permitted pinch zoom and tilted views.
+    const pivotX = (0.5 - offset.x) * viewportWidth;
+    const pivotY = (0.5 - offset.y) * viewportHeight;
+    const horizontal = Math.min(pivotX - safeSceneArea.left, safeSceneArea.right - pivotX) * 2 / viewportWidth;
+    const vertical = [(pivotY - safeSceneArea.top) * 2 / viewportHeight, (safeSceneArea.bottom - pivotY) * 2 / viewportHeight];
+    if (horizontal <= 0 || vertical.some(value => value <= 0)) return 0;
+    const tan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    const sin = Math.sin(polar), cos = Math.cos(polar);
+    const anchorShift = Math.hypot(profileAnchor.x - target.x, profileAnchor.y - target.z);
+    let distance = 0;
+    for (const bin of framingProfile) {
+      const radius = bin.radius + anchorShift;
+      for (const y of [bin.minY - target.y, bin.maxY - target.y]) {
+        distance = Math.max(distance, y * cos + radius * Math.hypot(sin, 1 / (horizontal * tan * camera.aspect)));
+        for (const [index, sign] of [[0, 1], [1, -1]]) {
+          const scale = 1 / (vertical[index] * tan);
+          distance = Math.max(distance, y * (cos + sign * sin * scale) + radius * Math.abs(sin - sign * cos * scale));
+        }
+      }
+    }
+    distance *= 1.015;
+    fitCache = { revision: fitRevision, polar, target: target.clone(), offset: offset.clone(), distance };
+    return distance;
+  }
+  function enforceSafeFit() {
+    if (!safeSceneArea || cameraTransition) return;
+    const distance = camera.position.distanceTo(controls.target);
+    const required = fitDistance(controls.getPolarAngle(), controls.target, currentViewOffset);
+    if (!required) return;
+    controls.minDistance = required;
+    controls.maxDistance = Math.max(baseDistance * 1.33, required * 1.18);
+    if (distance < required) {
+      camera.position.sub(controls.target).multiplyScalar(required / distance).add(controls.target);
+      controls.update();
+    }
+  }
   function updateFraming() {
+    fitRevision++;
     // A small physical offset gives a genuine orbit around an off-trunk anchor.
     // Composition uses an off-axis projection rather than a far-away orbit pivot,
     // so a complete revolution does not sweep the crown across the lyric column.
     const anchorX = treeCenterX * 0.8 - treeWidth * 0.055;
     const anchorZ = treeWidth * 0.025;
+    safeSceneArea = reservedSceneArea(canvas.getBoundingClientRect());
     desiredViewOffset.set(0, 0);
     const introductionAtSide = (mode === 'locked' || mode === 'letter' || (mode === 'explore' && lyricsLayout)) && viewportWidth >= 900;
     if (introductionAtSide) {
@@ -908,61 +1027,75 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
         initialTarget.set(anchorX, 4.4, anchorZ);
         desiredViewOffset.set(0, skyOffset);
       }
-    } else if (mode === 'explore' && lyricsLayout) {
-      // Reserve open sky above the crown for readable lyrics on portrait screens.
-      const compactLyrics = canvas.getBoundingClientRect().height < 680;
-      baseDistance = exploreDistance * (compactLyrics ? 1.46 : 1.18);
-      initialTarget.set(anchorX, 4.7, anchorZ);
-      desiredViewOffset.set(0, compactLyrics ? -0.07 : -0.12);
+    } else if (mode === 'explore' && safeSceneArea) {
+      // Measure the actual lyric/control layout, including browser UI height and
+      // a missing lyrics module, rather than assuming one portrait aspect ratio.
+      initialTarget.set(anchorX, (framingBounds.min.y + framingBounds.max.y) / 2, anchorZ);
+      desiredViewOffset.set(0.5 - (safeSceneArea.left + safeSceneArea.right) / (2 * viewportWidth), 0.5 - (safeSceneArea.top + safeSceneArea.bottom) / (2 * viewportHeight));
+      baseDistance = Math.max(exploreDistance, fitDistance(Math.atan2(1, 0.095))) * 1.06;
     } else {
       baseDistance = exploreDistance;
       initialTarget.set(anchorX, isPortrait ? 4.70 : 4.26, anchorZ);
     }
     const elevation = mode === 'letter' && viewportWidth < 900 ? 0.17 : 0.095;
     initialCamera.set(initialTarget.x + (isPortrait ? 0.40 : 1.45), initialTarget.y + baseDistance * elevation, initialTarget.z + baseDistance);
-    const compactLyricView = mode === 'explore' && lyricsLayout && viewportWidth < 900 && canvas.getBoundingClientRect().height < 680;
-    controls.minDistance = baseDistance * (compactLyricView ? 0.85 : 0.63);
+    controls.minDistance = safeSceneArea ? fitDistance(Math.atan2(1, elevation)) : baseDistance * 0.63;
     controls.maxDistance = baseDistance * 1.33;
+    framingKey = safeAreaKey(safeSceneArea);
   }
-  function resize() {
+  function resize(forceLayout = false) {
     if (disposed || failed) return;
     const rect = canvas.getBoundingClientRect();
     const width = Math.max(1, rect.width || window.innerWidth);
     const height = Math.max(1, rect.height || window.innerHeight);
+    const sizeChanged = !hasSized || Math.abs(width - viewportWidth) > 0.25 || Math.abs(height - viewportHeight) > 0.25;
+    const reservedChanged = framingKey !== safeAreaKey(reservedSceneArea(rect));
+    // Mobile browser toolbars can dispatch resize while a 100svh canvas is
+    // unchanged. Do not reset its orbit, buffers, or camera in that case.
+    if (!sizeChanged && !reservedChanged && forceLayout !== true) return;
     const oldBaseDistance = baseDistance;
     const oldOffset = camera.position.clone().sub(controls.target);
-    const preserveManualView = manualViewDirty && oldOffset.lengthSq() > 0;
+    const preserveView = hasSized && interactiveMode() && oldOffset.lengthSq() > 0;
+    const wasPortrait = isPortrait;
     viewportWidth = width;
     viewportHeight = height;
     isPortrait = width / height < 0.82;
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
-    const dpr = Math.min(window.devicePixelRatio || 1, qualityDowngraded ? 1 : lowQuality ? 1.15 : isPortrait ? 1.55 : 1.8);
-    renderer.setPixelRatio(dpr);
-    uniforms.pixelRatio.value = dpr;
-    renderer.setSize(width, height, false);
+    if (sizeChanged) {
+      const dpr = Math.min(window.devicePixelRatio || 1, qualityDowngraded ? 1 : lowQuality ? 1.15 : isPortrait ? 1.55 : 1.8);
+      renderer.setPixelRatio(dpr);
+      uniforms.pixelRatio.value = dpr;
+      renderer.setSize(width, height, false);
+      viewportResizeCount++;
+    }
     tree.scale.set(isPortrait ? 0.84 : 1.13, isPortrait ? 1.03 : 0.92, 1);
     figure.scale.setScalar(isPortrait ? 1.02 : 0.85);
     succulent.scale.setScalar(isPortrait ? 0.91 : 0.77);
     tree.updateMatrixWorld(true);
     const treeBounds = new THREE.Box3().setFromObject(tree);
+    framingBounds.copy(treeBounds);
+    for (const root of [figure, succulent]) framingBounds.union(new THREE.Box3().setFromObject(root));
     const treeSize = treeBounds.getSize(new THREE.Vector3());
     const treeCenter = treeBounds.getCenter(new THREE.Vector3());
     treeWidth = treeSize.x;
     treeCenterX = treeCenter.x;
+    if (!framingProfile.length || wasPortrait !== isPortrait) buildFramingProfile();
     // Fit the broad crown by width while preserving a recognizable foreground figure.
     const widthToFit = isPortrait ? treeSize.x * 1.12 : Math.max(15.0, treeSize.x * 1.06);
     const horizontalDistance = widthToFit / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect);
     exploreDistance = Math.max(isPortrait ? 23 : 19.7, horizontalDistance + (isPortrait ? Math.max(0, treeBounds.max.z) * 0.60 : 0));
     updateFraming();
     controls.target.copy(initialTarget);
-    if (preserveManualView) {
+    if (preserveView) {
       const nextDistance = THREE.MathUtils.clamp(oldOffset.length() * baseDistance / oldBaseDistance, controls.minDistance, controls.maxDistance);
       camera.position.copy(initialTarget).add(oldOffset.normalize().multiplyScalar(nextDistance));
     } else camera.position.copy(initialCamera);
     applyViewOffset(desiredViewOffset);
     controls.update();
     cameraTransition = null;
+    enforceSafeFit();
+    hasSized = true;
   }
 
   function reset() {
@@ -970,6 +1103,11 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     manualViewDirty = false;
     lastInputAt = orbitClock;
     orbitCurrentRate = 0;
+    const resetPolar = Math.acos((initialCamera.y - initialTarget.y) / initialCamera.distanceTo(initialTarget));
+    // A tilted close-up can have a larger safety radius than the initial view.
+    // Restore the initial bounds before controls update the reset transition.
+    controls.minDistance = safeSceneArea ? fitDistance(resetPolar, initialTarget, desiredViewOffset) : baseDistance * 0.63;
+    controls.maxDistance = Math.max(baseDistance * 1.33, controls.minDistance * 1.18);
     if (reducedMotion) {
       camera.position.copy(initialCamera);
       controls.target.copy(initialTarget);
@@ -1095,6 +1233,10 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   if ('ResizeObserver' in window) {
     resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(canvas);
+    for (const selector of ['.page-header', '#lyrics-zone', '.explore-bottom', '#music-root']) {
+      const element = document.querySelector(selector);
+      if (element) resizeObserver.observe(element);
+    }
   }
 
   function animate(now) {
@@ -1123,7 +1265,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
       applyViewOffset(new THREE.Vector2().lerpVectors(cameraTransition.fromViewOffset, desiredViewOffset, t));
       if (t >= 1) cameraTransition = null;
     }
-    const eligible = mode === 'explore' && lyricsLayout && !reducedMotion;
+    const eligible = mode === 'explore' && !reducedMotion;
     const idleSeconds = Math.max(0, orbitClock - lastInputAt);
     orbitCurrentRate = eligible && !cameraTransition && !controlInputActive && pointers.size === 0
       ? orbitNominalRate * smoothStep(orbitResumeDelay, orbitResumeDelay + orbitResumeRamp, idleSeconds)
@@ -1135,6 +1277,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
       orbitTravelRadians += angle;
     }
     controls.update();
+    enforceSafeFit();
     // The camera makes the orbit. Geometry stays rooted; only its existing shader wind moves.
     tree.rotation.y = 0;
     const waveAge = elapsed - waveStarted;
@@ -1218,7 +1361,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   }
 
   function getOrbitState() {
-    const eligible = mode === 'explore' && lyricsLayout && !reducedMotion && !document.hidden;
+    const eligible = mode === 'explore' && !reducedMotion && !document.hidden;
     return {
       eligible, active: eligible && orbitCurrentRate !== 0,
       direction: 'clockwise', periodSeconds: orbitPeriodSeconds,
@@ -1231,6 +1374,8 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
       inputCount, lastInputKind, idleSeconds: Math.max(0, orbitClock - lastInputAt),
       resumeDelaySeconds: orbitResumeDelay, resumeRampSeconds: orbitResumeRamp,
       transitioning: Boolean(cameraTransition),
+      viewportResizeCount, safeSceneArea: safeSceneArea ? { ...safeSceneArea } : null,
+      minDistance: controls.minDistance, maxDistance: controls.maxDistance, baseDistance,
     };
   }
 
@@ -1270,7 +1415,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     setLyricsLayout(value) {
       if (disposed || failed || lyricsLayout === Boolean(value)) return;
       lyricsLayout = Boolean(value);
-      if (mode === 'explore') { updateFraming(); if (!manualViewDirty) reset(); }
+      if (mode === 'explore') resize(true);
     },
     setReadingLayout(value) {
       if (disposed || failed || fullReading === Boolean(value)) return;
@@ -1326,8 +1471,28 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
       const bounds = new THREE.Box3().setFromObject(tree);
       const corners = [];
       for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y]) for (const z of [bounds.min.z, bounds.max.z]) corners.push(screen(new THREE.Vector3(x, y, z)));
+      const crown = crownCorners.map(point => screen(point.clone().applyMatrix4(tree.matrixWorld)));
+      const projectedContent = root => {
+        const result = { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity };
+        const point = new THREE.Vector3();
+        root.traverse(object => {
+          const positions = object.geometry?.getAttribute('position');
+          if (!positions) return;
+          for (let index = 0; index < positions.count; index++) {
+            point.fromBufferAttribute(positions, index).applyMatrix4(object.matrixWorld).project(camera);
+            const x = rect.left + (point.x + 1) * rect.width / 2;
+            const y = rect.top + (1 - point.y) * rect.height / 2;
+            result.left = Math.min(result.left, x); result.right = Math.max(result.right, x);
+            result.top = Math.min(result.top, y); result.bottom = Math.max(result.bottom, y);
+          }
+        });
+        return { left: result.left - 4, right: result.right + 4, top: result.top - 4, bottom: result.bottom + 4 };
+      };
       return {
-        treeBounds: {left: Math.min(...corners.map(p=>p.x)), right: Math.max(...corners.map(p=>p.x)), top: Math.min(...corners.map(p=>p.y)), bottom: Math.max(...corners.map(p=>p.y))},
+        treeBounds: projectedContent(tree),
+        crownBounds: projectedContent(blossoms),
+        treeBoxBounds: {left: Math.min(...corners.map(p=>p.x)), right: Math.max(...corners.map(p=>p.x)), top: Math.min(...corners.map(p=>p.y)), bottom: Math.max(...corners.map(p=>p.y))},
+        crownBoxBounds: {left: Math.min(...crown.map(p=>p.x)), right: Math.max(...crown.map(p=>p.x)), top: Math.min(...crown.map(p=>p.y)), bottom: Math.max(...crown.map(p=>p.y))},
         figure: screen(figureCenter.clone().applyMatrix4(figure.matrixWorld)),
         flower: screen(flower.clone().applyMatrix4(tree.matrixWorld)),
         camera: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
