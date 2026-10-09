@@ -47,7 +47,7 @@ export function splitLetterUnits(text) {
   return units;
 }
 
-export function createParticleLetter({ canvas, copy, onComplete = () => {}, onPhase = () => {}, onError = () => {} }) {
+export function createParticleLetter({ canvas, copy, reducedMotion = false, onComplete = () => {}, onPhase = () => {}, onError = () => {} }) {
   if (!canvas || typeof canvas.getContext !== 'function' || !copy) throw new TypeError('The particle letter needs a canvas and a text layer.');
   const context = canvas.getContext('2d', { alpha: true });
   if (!context) throw new Error('PARTICLE_CANVAS_UNAVAILABLE');
@@ -94,6 +94,7 @@ export function createParticleLetter({ canvas, copy, onComplete = () => {}, onPh
   let running = false, disposed = false, fontPromise = null;
   let particleStride = 1, slowFrames = 0, renderInterval = 1000 / 30;
   let lastPaintTimestamp = -Infinity, repaintRequested = true;
+  reducedMotion = Boolean(reducedMotion);
   const graphemes = value => Array.from(segmenter.segment(value), part => part.segment);
   const setCopyOpacity = value => { copy.style.opacity = String(clamp(value)); };
 
@@ -194,6 +195,7 @@ export function createParticleLetter({ canvas, copy, onComplete = () => {}, onPh
       return line;
     });
     copy.append(fragment);
+    if (reducedMotion) { groups = []; return; }
     const canvasRectangle = canvas.getBoundingClientRect();
     const range = document.createRange();
     const prepared = [];
@@ -310,7 +312,7 @@ export function createParticleLetter({ canvas, copy, onComplete = () => {}, onPh
     if (elapsed >= duration) {
       elapsed = 0;
       if (phase === 'converging') announce('reading');
-      else if (phase === 'reading') announce('dissolving');
+      else if (phase === 'reading' && !reducedMotion) announce('dissolving');
       else {
         unitIndex++;
         if (unitIndex >= units.length) {
@@ -327,7 +329,7 @@ export function createParticleLetter({ canvas, copy, onComplete = () => {}, onPh
           return;
         }
         buildCurrentUnit();
-        announce('converging');
+        announce(reducedMotion ? 'reading' : 'converging');
       }
     }
     if (token !== generation || !running || disposed) return;
@@ -395,7 +397,7 @@ export function createParticleLetter({ canvas, copy, onComplete = () => {}, onPh
       running = true;
       resize();
       if (token !== generation || !running || disposed) return false;
-      announce('converging');
+      announce(reducedMotion ? 'reading' : 'converging');
       paint();
       schedule();
       return true;
@@ -407,6 +409,30 @@ export function createParticleLetter({ canvas, copy, onComplete = () => {}, onPh
     if (document.hidden) { cancelAnimationFrame(frame); frame = 0; }
     else schedule();
   }
+  function setReducedMotion(value) {
+    const next = Boolean(value);
+    if (disposed || next === reducedMotion) return;
+    reducedMotion = next;
+    if (!running) return;
+    try {
+      if (reducedMotion) {
+        // A moving unit must still be read in full; changing preferences never
+        // advances its index or turns the sequence into the complete letter.
+        if (phase === 'converging' || phase === 'dissolving') {
+          elapsed = 0;
+          lastTimestamp = null;
+          announce('reading');
+        }
+        groups = [];
+      } else {
+        // Preserve the current reading clock while preparing its later fall.
+        buildCurrentUnit();
+      }
+      paint();
+      repaintRequested = false;
+      schedule();
+    } catch (error) { fail(error, generation); }
+  }
   const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(resize) : null;
   resizeObserver?.observe(canvas);
   window.addEventListener('resize', resize);
@@ -414,7 +440,7 @@ export function createParticleLetter({ canvas, copy, onComplete = () => {}, onPh
   resize();
   announce('idle');
   return {
-    start, stop, resize,
+    start, stop, resize, setReducedMotion,
     dispose() {
       if (disposed) return;
       stop();

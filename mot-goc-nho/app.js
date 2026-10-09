@@ -1,7 +1,7 @@
 import {decryptLetter} from './crypto.js';
 import {createMusic} from './music.js';
 import musicConfig from './music-config.js';
-import {createParticleLetter} from './particle-letter.js?v=20261009-r3';
+import {createParticleLetter} from './particle-letter.js?v=20261009-r3b';
 
 const $ = id => document.getElementById(id);
 const reducedQuery = matchMedia('(prefers-reduced-motion: reduce)');
@@ -18,6 +18,7 @@ let letterEffect;
 try { letterEffect = createParticleLetter({
   canvas: $('particle-text'),
   copy: $('particle-copy'),
+  reducedMotion,
   onComplete: finishSequence,
   onError: completeLetter,
   onPhase: ({phase,unit,unitCount}) => {
@@ -65,7 +66,7 @@ function completeLetter() {
   $('particle-stage').hidden=true;
   $('letter-scroll').hidden=false;
   $('reveal-button').hidden=true;
-  $('replay-button').hidden=reducedMotion||!letterEffect;
+  $('replay-button').hidden=!letterEffect;
   $('explore-button').hidden=false;
 }
 function finishSequence() {
@@ -84,7 +85,7 @@ async function typeLetter() {
   $('replay-button').hidden=true;
   $('explore-button').hidden=true;
   $('letter-scroll').scrollTop=0;
-  if(reducedMotion || !letterEffect) { completeLetter(); return; }
+  if(!letterEffect) { completeLetter(); return; }
   try { await letterEffect.start(openedText); } catch { if(generation===presentationGeneration)completeLetter(); }
 }
 $('open-form').addEventListener('submit', async event=>{
@@ -143,9 +144,9 @@ $('password-toggle').addEventListener('click',()=>{
 $('reveal-button').addEventListener('click',completeLetter);
 $('replay-button').addEventListener('click',()=>{typeLetter();$('reveal-button').focus({preventScroll:true});});
 $('explore-button').addEventListener('click',()=>{if(!typingComplete)return;setView('explore');$('reread-button').focus({preventScroll:true});});
-$('reread-button').addEventListener('click',()=>{setView('letter');typeLetter();(reducedMotion||!letterEffect?$('letter-scroll'):$('reveal-button')).focus({preventScroll:true});});
+$('reread-button').addEventListener('click',()=>{setView('letter');typeLetter();(!letterEffect?$('letter-scroll'):$('reveal-button')).focus({preventScroll:true});});
 $('reset-button').addEventListener('click',()=>scene?.reset());
-function updateMotion(){document.body.classList.toggle('reduced-motion',reducedMotion);$('motion-toggle').setAttribute('aria-pressed',String(reducedMotion));$('motion-toggle').setAttribute('aria-label',reducedMotion?'Bật chuyển động nhẹ':'Giảm chuyển động');scene?.setReducedMotion(reducedMotion);if(reducedMotion&&openedText&&!typingComplete)completeLetter();$('replay-button').hidden=reducedMotion||!typingComplete||!letterEffect;}
+function updateMotion(){document.body.classList.toggle('reduced-motion',reducedMotion);$('motion-toggle').setAttribute('aria-pressed',String(reducedMotion));$('motion-toggle').setAttribute('aria-label',reducedMotion?'Bật chuyển động nhẹ':'Giảm chuyển động');scene?.setReducedMotion(reducedMotion);letterEffect?.setReducedMotion(reducedMotion);$('replay-button').hidden=!typingComplete||!letterEffect;}
 $('motion-toggle').addEventListener('click',()=>{reducedMotion=!reducedMotion;updateMotion();});
 reducedQuery.addEventListener('change',event=>{reducedMotion=event.matches;updateMotion();});
 updateMotion();

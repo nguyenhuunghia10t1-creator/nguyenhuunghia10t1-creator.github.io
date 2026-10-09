@@ -95,7 +95,7 @@ Khôi phục bằng `git revert` commit cần bỏ và push bình thường. Kh�
 
 Mỗi câu tụ thành từ hạt, giữ rõ khoảng 3 giây rồi tan xuống thành cánh hoa. Cảnh cây tiếp tục sáng và chuyển động; không phủ lớp tối hoặc blur khi đọc. Kết thúc sequence chuyển sang khám phá. “Đọc lại thư” luôn chạy từ câu đầu, không tự mở bản chữ tĩnh. “Hiện toàn bộ” chỉ là chế độ đọc phụ được người xem chọn. Không lưu bản rõ vào tệp, storage hoặc log; mọi thay đổi màn giữ cùng một nguồn nhạc.
 
-Chữ dùng sprite hạt/cánh hoa đã tạo sẵn, giới hạn mật độ và DPR; điện thoại vẽ tối đa 30 khung/giây, thiết bị chậm tự giảm lượng hạt. Khi tab ẩn, chuyển động được tạm dừng. Giảm chuyển động hoặc không tạo được canvas chữ sẽ chuyển ngay sang bản đọc toàn bộ. Cảnh 3D vẫn có fallback tĩnh độc lập.
+Chữ dùng sprite hạt/cánh hoa đã tạo sẵn, giới hạn mật độ và DPR; điện thoại vẽ tối đa 30 khung/giây, thiết bị chậm tự giảm lượng hạt. Khi tab ẩn, chuyển động được tạm dừng. Chế độ giảm chuyển động vẫn lần lượt đọc từng câu trong 3 giây, nhưng bỏ chuyển động tụ/tan hạt; đọc lại vẫn bắt đầu từ câu đầu. Nếu không tạo được canvas chữ hoặc không tải được font, thư chuyển sang bản đọc toàn bộ. Cảnh 3D vẫn có fallback tĩnh độc lập.
 
 ## Thư viện và quyền riêng tư khi kiểm tra
 
