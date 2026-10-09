@@ -3,7 +3,7 @@ import { OrbitControls } from './vendor/OrbitControls.js';
 
 // All geometry is original, deterministic point geometry. No image of a tree is used.
 const PALETTE = {
-  bark: ['#15556c', '#1d819b', '#36b1ca', '#69d5e2', '#a2edf0'],
+  bark: ['#15556c', '#1d819b', '#269ece', '#38b8e0', '#6ad8ef'],
   leaves: ['#442c4d', '#643251', '#864264', '#a04d7b', '#bc6b9b'],
   flowers: ['#752653', '#a12c72', '#c4438a', '#de559e', '#de72ae', '#f4abcd'],
   man: ['#aebbc9', '#d4cdda', '#f2e1de'],
@@ -62,7 +62,7 @@ class PointCloud {
   }
 }
 
-function pointMaterial(uniforms, { opacity = 1, glow = false, sizeMultiplier = 1, petal = false } = {}) {
+function pointMaterial(uniforms, { opacity = 1, glow = false, sizeMultiplier = 1, petal = false, emission = 1 } = {}) {
   return new THREE.ShaderMaterial({
     uniforms: {
       uTime: uniforms.time,
@@ -73,6 +73,7 @@ function pointMaterial(uniforms, { opacity = 1, glow = false, sizeMultiplier = 1
       uSizeMultiplier: { value: sizeMultiplier },
       uGlow: { value: glow ? 1 : 0 },
       uPetal: { value: petal ? 1 : 0 },
+      uEmission: { value: emission },
     },
     vertexColors: true,
     transparent: true,
@@ -91,6 +92,9 @@ function pointMaterial(uniforms, { opacity = 1, glow = false, sizeMultiplier = 1
       varying float vPhase;
       void main() {
         vec3 p = position;
+        float crown = smoothstep(1.4, 6.7, p.y);
+        p.x += sin(uTime * 0.48 + p.y * 0.21) * 0.039 * crown * uMotion;
+        p.z += cos(uTime * 0.37 + p.y * 0.17) * 0.017 * crown * uMotion;
         p.x += sin(uTime * 0.43 + aPhase + p.y * 0.19) * aSway * uMotion;
         p.z += cos(uTime * 0.31 + aPhase * 0.67) * aSway * 0.6 * uMotion;
         vec4 mv = modelViewMatrix * vec4(p, 1.0);
@@ -98,7 +102,7 @@ function pointMaterial(uniforms, { opacity = 1, glow = false, sizeMultiplier = 1
         vDepth = -mv.z;
         vPhase = aPhase;
         gl_Position = projectionMatrix * mv;
-        gl_PointSize = clamp(aSize * uSizeMultiplier * uPixelRatio * 43.0 / max(1.0, -mv.z), 0.8 * uPixelRatio, 11.0 * uPixelRatio);
+        gl_PointSize = clamp(aSize * uSizeMultiplier * uPixelRatio * 43.0 / max(1.0, -mv.z), 0.8 * uPixelRatio, (uSizeMultiplier > 2.0 ? 24.0 : 8.0) * uPixelRatio);
       }
     `,
     fragmentShader: `
@@ -108,13 +112,14 @@ function pointMaterial(uniforms, { opacity = 1, glow = false, sizeMultiplier = 1
       uniform float uMotion;
       uniform float uGlow;
       uniform float uPetal;
+      uniform float uEmission;
       varying vec3 vColor;
       varying float vDepth;
       varying float vPhase;
       void main() {
         vec2 q = gl_PointCoord - vec2(0.5);
         if (uPetal > 0.5) {
-          float angle = uTime * 0.46 * uMotion + vPhase;
+          float angle = uTime * 0.575 * uMotion + vPhase;
           q = mat2(cos(angle), -sin(angle), sin(angle), cos(angle)) * q;
           q.x *= 1.0 + abs(sin(angle * 0.67)) * 0.62;
           q.y *= 1.55;
@@ -124,7 +129,7 @@ function pointMaterial(uniforms, { opacity = 1, glow = false, sizeMultiplier = 1
         float alpha = (1.0 - smoothstep(0.16, 1.0, radius)) * uOpacity;
         if (uGlow > 0.5) alpha = exp(-radius * radius * 4.4) * (1.0 - smoothstep(0.72, 1.0, radius)) * uOpacity;
         float center = 1.0 - smoothstep(0.0, 0.4, radius);
-        vec3 c = vColor * (0.87 + center * 0.28) * uExposure;
+        vec3 c = vColor * (0.87 + center * 0.28) * uExposure * uEmission;
         float fog = smoothstep(33.0, 85.0, vDepth);
         c = mix(c, vec3(0.003, 0.007, 0.017), fog * 0.54);
         gl_FragColor = vec4(c, alpha);
@@ -160,134 +165,141 @@ function buildTree(random, density) {
   const foliage = new PointCloud(random);
   const flowers = new PointCloud(random);
   const tips = [];
-  const count = n => Math.max(14, Math.round(n * density * 0.74));
-
-  addTube(wood, [[0, 0, 0], [-0.18, 0.7, 0.04], [-0.1, 1.8, -0.01], [0.19, 3.02, 0], [-0.03, 4.24, -0.1]], 0.47, 0.19, count(7100), PALETTE.bark, { size: 1.18 });
-  // Buttress roots join the tree to the ground instead of ending at a floating cylinder.
+  const clouds = [];
+  const filaments = [];
+  function illuminate(curve) {
+    const count=Math.max(12,Math.ceil(curve.getLength()*14));
+    let previous=curve.getPoint(0);
+    for(let i=1;i<=count;i++){
+      const next=curve.getPoint(i/count);
+      filaments.push(previous.x,previous.y,previous.z,next.x,next.y,next.z);
+      previous=next;
+    }
+  }
+  const n = value => Math.max(12, Math.round(value * density));
+  // A short, rooted trunk opens into a crown that begins just above the ground.
+  addTube(wood, [[0, 0, 0], [-0.05, 0.54, 0], [0.06, 1.24, -0.02], [-0.06, 2.05, -0.08]], 0.40, 0.18, n(4200), PALETTE.bark, { size: 1.03 });
   for (let i = 0; i < 7; i++) {
-    const angle = i * Math.PI * 2 / 7 + 0.3;
-    const length = 0.9 + random() * 0.72;
-    addTube(wood, [[0.02, 0.54, 0], [Math.cos(angle) * 0.49, 0.17, Math.sin(angle) * 0.43], [Math.cos(angle) * length, 0.018, Math.sin(angle) * length]], 0.19, 0.016, count(390), PALETTE.bark, { size: 0.95 });
+    const a = i * Math.PI * 2 / 7 + 0.2;
+    addTube(wood, [[0, 0.32, 0], [Math.cos(a) * 0.37, 0.09, Math.sin(a) * 0.34], [Math.cos(a) * (0.75 + random() * 0.35), 0.015, Math.sin(a) * 0.73]], 0.13, 0.012, n(190), PALETTE.bark, { size: 0.84 });
   }
-
-  // Broad ascending forks carry nested blossom tiers, each with a real depth axis.
+  // Each major limb has its own curved path through the crown, not a bare Y shape.
   const limbs = [
-    { start: [0.05, 2.48, 0.0], bend: [-1.5, 3.94, 0.0], end: [-4.90, 4.95, 0.45], radius: 0.27 },
-    { start: [0.0, 3.05, -0.1], bend: [-1.54, 5.24, -0.65], end: [-4.05, 7.11, -0.96], radius: 0.245 },
-    { start: [0.05, 3.53, -0.06], bend: [-0.9, 5.95, -0.90], end: [-2.52, 8.10, -1.19], radius: 0.21 },
-    { start: [-0.05, 3.98, -0.1], bend: [-0.37, 6.31, -0.14], end: [-0.8, 8.65, -0.34], radius: 0.17 },
-    { start: [0.01, 3.5, -0.12], bend: [0.90, 6.18, -0.58], end: [1.33, 8.35, -0.85], radius: 0.23 },
-    { start: [0.1, 3.07, -0.03], bend: [1.94, 5.38, -0.72], end: [3.68, 7.63, -1.15], radius: 0.26 },
-    { start: [0.12, 2.88, 0.05], bend: [2.16, 4.54, 0.16], end: [5.18, 6.20, 0.27], radius: 0.28 },
-    { start: [0.1, 2.7, 0.12], bend: [1.90, 3.98, 1.30], end: [4.90, 4.95, 2.15], radius: 0.21 },
-    { start: [0.02, 3.03, 0.08], bend: [-1.37, 4.13, 1.31], end: [-3.40, 5.33, 2.78], radius: 0.21 },
-    { start: [0.06, 3.73, 0.1], bend: [0.35, 5.33, 1.78], end: [0.87, 7.47, 2.82], radius: 0.18 },
-    { start: [-0.06, 3.45, -0.15], bend: [-0.30, 5.36, -1.74], end: [-1.53, 7.38, -3.02], radius: 0.19 },
-    { start: [0.0, 3.17, -0.1], bend: [1.11, 4.82, -1.83], end: [3.16, 6.15, -2.91], radius: 0.17 },
+    [[0, 1.04, 0], [-1.28, 2.08, 0.22], [-3.60, 2.78, 0.65], [-5.58, 2.93, 0.88]],
+    [[0, 1.28, 0], [-1.59, 2.64, 0.05], [-3.72, 4.07, 0.33], [-5.75, 5.26, 0.65]],
+    [[0, 1.18, 0.10], [-1.42, 2.43, 0.12], [-3.68, 3.38, 0.53], [-5.95, 4.10, 0.95]],
+    [[0, 1.43, -0.05], [-1.26, 3.10, -0.42], [-2.65, 5.13, -0.50], [-4.13, 7.14, -0.87]],
+    [[0, 1.70, -0.04], [-0.72, 3.95, -0.05], [-1.47, 6.02, -0.32], [-1.18, 7.98, -0.47]],
+    [[0, 1.67, -0.06], [0.38, 3.68, -0.32], [0.60, 6.01, 0.02], [0.23, 8.13, -0.05]],
+    [[0.02, 1.55, -0.03], [1.31, 3.28, -0.49], [2.85, 5.54, -0.72], [3.66, 7.41, -0.95]],
+    [[0.02, 1.30, 0.03], [1.86, 2.96, 0.21], [3.86, 4.31, 0.54], [5.76, 5.66, 0.34]],
+    [[0.01, 1.04, 0.06], [1.38, 2.07, 0.63], [3.63, 2.67, 1.10], [5.75, 3.28, 1.44]],
+    [[0.02, 1.14, 0.14], [1.49, 2.37, 0.48], [3.76, 3.37, 0.92], [5.96, 4.32, 1.32]],
+    [[0, 1.27, 0.09], [-1.17, 2.60, 1.52], [-2.55, 4.10, 2.72], [-3.69, 5.68, 3.09]],
+    [[0, 1.30, 0.10], [1.19, 2.68, 1.55], [2.26, 4.38, 2.87], [3.61, 5.38, 3.05]],
+    [[0.03, 1.45, 0.14], [0.31, 3.34, 1.68], [-0.39, 5.48, 2.66], [0.36, 7.04, 2.79]],
+    [[-0.02, 1.38, -0.13], [-1.33, 2.82, -1.71], [-2.65, 4.69, -2.65], [-3.90, 6.41, -3.04]],
+    [[0.02, 1.44, -0.10], [1.16, 3.03, -1.44], [2.27, 4.73, -2.54], [3.67, 6.25, -2.94]],
+    [[0, 1.62, -0.09], [-0.19, 3.63, -1.69], [0.71, 5.55, -2.74], [0.83, 7.30, -2.80]],
+    [[0.01, 1.13, 0.08], [-0.44, 2.12, 1.87], [-1.56, 2.89, 3.05], [-2.19, 3.28, 3.40]],
+    [[0.02, 1.10, -0.07], [0.50, 2.23, -1.73], [1.75, 3.07, -3.11], [2.36, 3.64, -3.54]],
   ];
-
-  limbs.forEach((limb, limbIndex) => {
-    const branch = addTube(wood, [limb.start, limb.bend, limb.end], limb.radius, 0.027, count(1900), PALETTE.bark, { size: 1.08 });
-    for (let j = 0; j < 4; j++) {
-      const t = 0.42 + j * 0.17;
-      const joint = branch.getPoint(t);
+  function cloud(center, radius, phase, weight = 1) {
+    clouds.push({ center, radius, phase, weight });
+    tips.push({ center: center.clone(), angle: phase, flowerAmount: weight });
+  }
+  limbs.forEach((points, limbIndex) => {
+    const main = addTube(wood, points, 0.18 + (limbIndex < 8 ? 0.045 : 0), 0.012, n(760), PALETTE.bark, { size: 0.98 });
+    illuminate(main);
+    const outward = new THREE.Vector3(points[3][0], 0, points[3][2]).normalize();
+    const sideways = new THREE.Vector3(-outward.z, 0, outward.x);
+    for (let j = 0; j < 6; j++) {
+      const t = 0.30 + j * 0.123;
+      const joint = main.getPoint(t);
       const side = j % 2 ? 1 : -1;
-      const dir = new THREE.Vector3(limb.end[0] - limb.start[0], 0, limb.end[2] - limb.start[2]).normalize();
-      const outward = 0.8 + random() * 0.6;
-      const tip = joint.clone().add(new THREE.Vector3(
-        dir.x * outward + dir.z * side * (0.45 + random() * 0.4),
-        0.43 + random() * 0.56,
-        dir.z * outward - dir.x * side * (0.45 + random() * 0.4),
-      ));
-      const middle = joint.clone().lerp(tip, 0.53).add(new THREE.Vector3(0, 0.19, 0));
-      addTube(wood, [joint.toArray(), middle.toArray(), tip.toArray()], 0.069 - j * 0.008, 0.009, count(360), PALETTE.bark, { size: 0.87, sway: 0.008 });
+      const reach = 0.59 + random() * 0.59;
+      const lowSkirt = points[3][1] < 4.5;
+      const end = joint.clone().addScaledVector(outward, reach).addScaledVector(sideways, side * (0.38 + random() * 0.62));
+      end.y += lowSkirt ? 0.16 + random() * 0.48 : 0.42 + random() * 0.77;
+      const bend = joint.clone().lerp(end, 0.56).add(new THREE.Vector3(0, 0.17, 0));
+      const secondary = addTube(wood, [joint.toArray(), bend.toArray(), end.toArray()], 0.043 - j * 0.0036, 0.005, n(205), PALETTE.bark, { size: 0.78, sway: 0.009 });
+      illuminate(secondary);
+      // Blossoms also occupy the interior of each supported branch, connecting tiers.
+      cloud(secondary.getPoint(0.69), 0.73 + random() * 0.18, limbIndex + j, 0.73);
       for (let k = 0; k < 3; k++) {
-        const angle = k * Math.PI * 2 / 3 + limbIndex * 0.49 + j;
-        const reach = 0.36 + random() * 0.46;
-        const twigEnd = tip.clone().add(new THREE.Vector3(Math.cos(angle) * reach, 0.12 + random() * 0.23, Math.sin(angle) * reach));
-        addTube(wood, [tip.toArray(), tip.clone().lerp(twigEnd, 0.45).add(new THREE.Vector3(0, 0.09, 0)).toArray(), twigEnd.toArray()], 0.018, 0.004, count(120), PALETTE.bark, { size: 0.76, sway: 0.014 });
-        tips.push({ center: twigEnd, angle, flowerAmount: 0.30 + random() * 0.6 });
+        const origin = secondary.getPoint(0.45 + k * 0.245);
+        const angle = limbIndex * 0.73 + j * 1.91 + k * 2.09;
+        const tip = origin.clone().add(new THREE.Vector3(Math.cos(angle) * (0.43 + random() * 0.42), (lowSkirt ? -0.10 : 0.12) + random() * 0.35, Math.sin(angle) * (0.42 + random() * 0.38)));
+        illuminate(addTube(wood, [origin.toArray(), origin.clone().lerp(tip, 0.53).add(new THREE.Vector3(0, 0.10, 0)).toArray(), tip.toArray()], 0.014, 0.002, n(87), PALETTE.bark, { size: 0.69, sway: 0.013 }));
+        cloud(tip, 0.74 + random() * 0.34, angle, lowSkirt ? 0.90 : 1);
       }
     }
-    // Interior clusters bridge the outer tiers without replacing the branch topology
-    // with a spherical cloud. Their cyan support remains visible through the petals.
-    for (const t of [0.48, 0.65, 0.83]) {
-      const innerTip = branch.getPoint(t).add(new THREE.Vector3(0, 0.3, 0));
-      tips.push({ center: innerTip, angle: limbIndex + t * 5, flowerAmount: 0.68 });
-    }
-    tips.push({ center: new THREE.Vector3(...limb.end), angle: limbIndex, flowerAmount: 0.8 });
+    cloud(new THREE.Vector3(...points[3]), 1.0, limbIndex, 1);
   });
-
-  for (let clusterIndex = 0; clusterIndex < tips.length; clusterIndex++) {
-    const { center, angle, flowerAmount } = tips[clusterIndex];
-    // Fine dusky sprays provide depth beneath the brighter blossom surfaces.
-    const frondCount = Math.round(4 * density) + 1;
-    for (let f = 0; f < frondCount; f++) {
-      const phi = angle + f * 2.39996;
-      const length = 0.46 + random() * 0.66;
-      const direction = new THREE.Vector3(Math.cos(phi), 0.16 + random() * 0.40, Math.sin(phi));
-      const across = new THREE.Vector3(-Math.sin(phi), 0, Math.cos(phi));
-      const base = center.clone().add(new THREE.Vector3((random() - 0.5) * 0.37, (random() - 0.36) * 0.57, (random() - 0.5) * 0.37));
-      for (let step = 0; step < 10; step++) {
-        const t = (step + 0.3) / 10;
-        const spine = base.clone().addScaledVector(direction, length * t);
-        spine.y -= t * t * 0.16;
-        const halfWidth = Math.sin(Math.PI * t) * (0.15 + length * 0.14);
-        for (const side of [-1, 1]) {
-          for (let leaflet = 0; leaflet < 3; leaflet++) {
-            const leaf = spine.clone().addScaledVector(across, side * halfWidth * (leaflet + 0.6) / 3);
-            leaf.addScaledVector(direction, -0.07 * leaflet);
-            leaf.y += (random() - 0.5) * 0.027;
-            const shade = Math.min(4, Math.floor(random() * 4.6));
-            foliage.point(leaf.x, leaf.y, leaf.z, PALETTE.leaves[shade], 0.76 + random() * 0.52, 0.018 + t * 0.035, phi);
-          }
-        }
-      }
-    }
-    // Small five-petal rosettes collect above the flattened foliage tiers.
-    const blossomCount = Math.round((25 + flowerAmount * 43) * density);
-    for (let b = 0; b < blossomCount; b++) {
-      const phi = random() * Math.PI * 2;
-      const radius = 0.44 + flowerAmount * 0.49;
-      const r = Math.sqrt(random()) * radius;
-      const dome = Math.sqrt(Math.max(0, 1 - r * r / (radius * radius)));
-      const blossom = center.clone().add(new THREE.Vector3(Math.cos(phi) * r, 0.10 + dome * random() * 0.83 - r * 0.06, Math.sin(phi) * r * 0.94));
-      const warm = random();
-      const shade = warm > 0.985 ? 5 : Math.floor(1 + random() * 4);
-      for (let petal = 0; petal < 5; petal++) {
-        const theta = petal * Math.PI * 2 / 5 + phi;
-        const spread = 0.025 + random() * 0.043;
-        flowers.point(blossom.x + Math.cos(theta) * spread, blossom.y + Math.sin(theta) * spread * 0.57, blossom.z + Math.sin(theta) * spread, PALETTE.flowers[shade], 0.93 + random() * 0.67, 0.028, phi);
-      }
-      if (b % 7 === 0) flowers.point(blossom.x, blossom.y + 0.025, blossom.z, '#ef9cca', 0.78, 0.026, phi);
+  // Overlapping anisotropic, feather-edged clusters form one continuous volumetric
+  // crown. Fine particles follow branch lobes; they are never a single sphere.
+  for (const { center, radius, phase, weight } of clouds) {
+    const amount = n(385 * weight);
+    for (let i = 0; i < amount; i++) {
+      const angle = random() * Math.PI * 2;
+      const r = Math.min(1.42, Math.sqrt(-Math.log(Math.max(0.00001, random()))) * 0.60);
+      const x = Math.cos(angle) * r * radius;
+      const z = Math.sin(angle) * r * radius * 0.83;
+      const vertical = (random() + random() + random() - 1.45) * radius * 0.89;
+      const y = vertical + Math.sin(angle * 2.0 + phase) * 0.10 - r * 0.09;
+      const destination = i % 4 === 0 ? foliage : flowers;
+      const palette = destination === foliage ? PALETTE.leaves : PALETTE.flowers;
+      const shade = destination === flowers && random() > 0.99 ? 5 : Math.floor(random() * Math.min(5, palette.length));
+      destination.point(center.x + x, center.y + y, center.z + z, palette[shade], 0.97 + random() * 0.55, 0.026 + r * 0.020, phase);
     }
   }
-
-  return { wood, foliage, flowers, tips };
+  return { wood, foliage, flowers, tips, filaments };
 }
-
 function buildFigure(random, density) {
   const body = new PointCloud(random);
   const arm = new PointCloud(random);
-  const n = x => Math.round(x * Math.max(0.8, density));
-  const tube = (points, radius = 0.039, count = 240) => addTube(body, points, radius, radius * 0.8, n(count), PALETTE.man, { size: 1.37 });
-  tube([[0, 1.46, 0], [0.025, 1.12, 0], [0.075, 0.61, 0.045]], 0.051, 630);
-  tube([[-0.035, 1.27, 0], [-0.39, 1.01, 0.10], [-0.43, 0.54, 0.43]], 0.04, 460);
-  tube([[0.07, 0.62, 0.045], [-0.38, 0.33, 0.3], [-0.57, 0.07, 0.79]], 0.044, 560);
-  tube([[0.075, 0.62, 0.045], [0.43, 0.33, 0.25], [0.60, 0.07, 0.67]], 0.044, 540);
-  tube([[-0.57, 0.065, 0.74], [-0.65, 0.045, 0.93]], 0.045, 90);
-  tube([[0.60, 0.07, 0.62], [0.71, 0.04, 0.79]], 0.045, 90);
-  for (let i = 0; i < n(790); i++) {
-    const y = 1 - 2 * (i + 0.5) / n(790);
+  const n = value => Math.round(value * Math.max(0.75, density));
+  const skin = ['#748ea3', '#a7bac8', '#d1d8e0'];
+  const clothing = ['#536779', '#7894ab', '#acb9cd'];
+  const line = (points, radius = 0.026, count = 200, colors = skin) => addTube(body, points, radius, radius * 0.77, n(count), colors, { size: 0.94 });
+  // A faceless, slightly tilted oval head; the smaller proportions avoid a stickman icon.
+  for (let i = 0; i < n(340); i++) {
+    const y = 1 - 2 * (i + 0.5) / n(340);
     const r = Math.sqrt(Math.max(0, 1 - y * y));
-    const theta = i * 2.399963;
-    body.point(Math.cos(theta) * r * 0.218, 1.68 + y * 0.244, Math.sin(theta) * r * 0.206, PALETTE.man[Math.floor(random() * 3)], 1.16 + random() * 0.39);
+    const angle = i * 2.399963;
+    const color = y > 0.58 && Math.sin(angle) < 0.3 ? '#576f86' : skin[Math.floor(random() * skin.length)];
+    body.point(-0.074 + Math.cos(angle) * r * 0.122, 1.414 + y * 0.165, 0.01 + Math.sin(angle) * r * 0.111, color, 0.75 + random() * 0.25);
   }
-  // This separate arm pivots at its shoulder for a small, recognizable greeting.
-  addTube(arm, [[0, 0, 0], [0.32, -0.27, 0.10], [0.37, -0.65, 0.28]], 0.04, 0.03, n(480), PALETTE.man, { size: 1.38 });
+  line([[-0.064, 1.27, 0.015], [-0.03, 1.14, 0.01]], 0.037, 150);
+  // A gently leaning, filled slim torso with shoulder and waist contours.
+  for (let i = 0; i < n(1050); i++) {
+    const t = random();
+    const angle = random() * Math.PI * 2;
+    const width = 0.095 + 0.067 * Math.sin(t * Math.PI * 0.87);
+    const depth = 0.073 + 0.015 * Math.sin(t * Math.PI);
+    const fill = 0.74 + random() * 0.26;
+    body.point(0.035 - t * 0.075 + Math.cos(angle) * width * fill, 0.57 + t * 0.58, 0.02 + Math.sin(angle) * depth * fill, clothing[Math.floor(random() * clothing.length)], 0.73 + random() * 0.22);
+  }
+  // Seated naturally, both legs rest forward rather than forming a symmetrical X.
+  line([[0.075, 0.59, 0.035], [0.45, 0.66, 0.23], [0.58, 0.12, 0.65]], 0.045, 570, clothing);
+  line([[-0.055, 0.56, 0.04], [-0.09, 0.24, 0.44], [0.33, 0.075, 0.87]], 0.043, 530, clothing);
+  line([[0.58, 0.12, 0.65], [0.64, 0.065, 0.83], [0.75, 0.06, 0.89]], 0.038, 160, clothing);
+  line([[0.33, 0.075, 0.87], [0.43, 0.052, 1.02]], 0.036, 130, clothing);
+  // The left hand rests beside the hip; the right forearm rests on the raised knee.
+  line([[-0.15, 1.10, 0.01], [-0.29, 0.84, 0.075], [-0.13, 0.57, 0.08]], 0.027, 390);
+  addTube(arm, [[0, 0, 0], [0.17, -0.23, 0.11], [0.30, -0.40, 0.24]], 0.028, 0.021, n(380), skin, { size: 0.96 });
+  for (let i = 0; i < n(50); i++) {
+    arm.point(0.30 + (random() - 0.5) * 0.066, -0.40 + (random() - 0.5) * 0.085, 0.24 + (random() - 0.5) * 0.045, skin[1 + i % 2], 0.83);
+  }
+  // A small, quiet stone gives the seated pose physical support.
+  for (let i = 0; i < n(600); i++) {
+    const y = random();
+    const angle = i * 2.399963;
+    const radius = Math.sqrt(1 - (y - 0.18) * (y - 0.18)) * 0.31;
+    body.point(-0.06 + Math.cos(angle) * radius, 0.04 + y * 0.46, -0.025 + Math.sin(angle) * radius * 0.75, i % 4 ? '#263f54' : '#3d5870', 0.74 + random() * 0.23);
+  }
   return { body, arm };
 }
-
 function buildSucculent(random, density) {
   const pot = new PointCloud(random);
   const leaves = new PointCloud(random);
@@ -441,14 +453,14 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
 
   const uniforms = {
     time: { value: 0 }, pixelRatio: { value: 1 },
-    motion: { value: reducedMotion ? 0 : 1 }, exposure: { value: window.innerWidth >= 900 ? 0.89 : 0.58 },
+    motion: { value: reducedMotion ? 0 : 1 }, exposure: { value: 1.07 },
   };
   const mainMaterial = pointMaterial(uniforms);
   const flowerMaterial = pointMaterial(uniforms, { opacity: 0.91 });
-  const branchMaterial = pointMaterial(uniforms, { opacity: 0.95 });
-  branchMaterial.depthWrite = true;
-  const branchGlowMaterial = pointMaterial(uniforms, { opacity: 0.19, glow: true, sizeMultiplier: 3.25 });
-  const blossomGlowMaterial = pointMaterial(uniforms, { opacity: 0.065, glow: true, sizeMultiplier: 5.2 });
+  const branchMaterial = pointMaterial(uniforms, { opacity: 0.98, emission: 1.15 });
+  branchMaterial.depthWrite = false;
+  const branchGlowMaterial = pointMaterial(uniforms, { opacity: 0.10, glow: true, sizeMultiplier: 4.0, emission: 1.15 });
+  const blossomGlowMaterial = pointMaterial(uniforms, { opacity: 0.026, glow: true, sizeMultiplier: 7.2 });
   const petalMaterial = pointMaterial(uniforms, { opacity: 0.86, sizeMultiplier: 1.30, petal: true });
   const starMaterial = pointMaterial(uniforms, { opacity: 0.58, glow: true });
   materials.push(mainMaterial, flowerMaterial, branchMaterial, branchGlowMaterial, blossomGlowMaterial, petalMaterial, starMaterial);
@@ -493,27 +505,48 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   const pinkGlow = addGlow(blossoms, blossomGlowMaterial, lowQuality ? 12 : 8, tree);
   cyanGlow.renderOrder = 2;
   pinkGlow.renderOrder = 2;
+  // Continuous cyan light inside the point branches retains fine topology even
+  // when the crown is viewed at phone size. It shares the same gentle wind.
+  const filamentGeometry=new THREE.BufferGeometry();
+  filamentGeometry.setAttribute('position',new THREE.Float32BufferAttribute(treeData.filaments,3));
+  geometries.push(filamentGeometry);
+  const filamentMaterial=new THREE.ShaderMaterial({
+    uniforms:{uTime:uniforms.time,uMotion:uniforms.motion,uExposure:uniforms.exposure},
+    transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+    vertexShader:`uniform float uTime;uniform float uMotion;void main(){vec3 p=position;float c=smoothstep(1.4,6.7,p.y);p.x+=sin(uTime*.48+p.y*.21)*.039*c*uMotion;p.z+=cos(uTime*.37+p.y*.17)*.017*c*uMotion;gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);}`,
+    fragmentShader:`uniform float uExposure;void main(){gl_FragColor=vec4(vec3(.02,.40,.94)*uExposure,.32);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }`,
+  });
+  materials.push(filamentMaterial);
+  const filaments=new THREE.LineSegments(filamentGeometry,filamentMaterial);
+  filaments.renderOrder=3;
+  tree.add(filaments);
 
   const figure = new THREE.Group();
-  figure.position.set(-2.53, 0.02, 2.48);
-  figure.rotation.y = -0.16;
+  figure.position.set(-3.03, 0.02, 2.88);
+  figure.rotation.y = -0.30;
   scene.add(figure);
   const figureData = buildFigure(random, density);
   addCloud(figureData.body, mainMaterial, figure);
   const rightArm = new THREE.Group();
-  rightArm.position.set(0.10, 1.27, 0);
+  rightArm.position.set(0.12, 1.12, 0.01);
   figure.add(rightArm);
   addCloud(figureData.arm, mainMaterial, rightArm);
 
   const succulent = new THREE.Group();
-  succulent.position.set(-1.26, 0.015, 2.78);
+  succulent.position.set(-1.75, 0.015, 3.00);
   scene.add(succulent);
   const plantData = buildSucculent(random, density);
   addCloud(plantData.pot, mainMaterial, succulent);
   addCloud(plantData.leaves, mainMaterial, succulent);
 
   const groundData = buildGround(random, density);
-  addCloud(groundData.ground, mainMaterial);
+  const groundPoints = addCloud(groundData.ground, mainMaterial);
+  const groundGlowMaterial = pointMaterial(uniforms, { opacity: 0.14, glow: true, sizeMultiplier: 5.8 });
+  materials.push(groundGlowMaterial);
+  addGlow(groundPoints, groundGlowMaterial, lowQuality ? 6 : 4, scene);
   addCloud(groundData.distance, starMaterial);
   const haloTexture = createHalo();
   if (haloTexture) {
@@ -541,7 +574,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   const floorMaterial = new THREE.ShaderMaterial({
     uniforms: { uExposure: uniforms.exposure }, transparent: true, depthWrite: false,
     vertexShader: 'varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
-    fragmentShader: 'varying vec2 vUv; uniform float uExposure; void main(){float r=length((vUv-0.5)*2.0);float a=(1.0-smoothstep(0.03,1.0,r))*0.22;gl_FragColor=vec4(vec3(0.035,0.046,0.085)*uExposure,a);}',
+    fragmentShader: 'varying vec2 vUv; uniform float uExposure; void main(){float r=length((vUv-0.5)*2.0);float a=(1.0-smoothstep(0.03,1.0,r))*0.48;vec3 c=mix(vec3(0.028,0.045,0.10),vec3(0.17,0.035,0.13),1.0-smoothstep(0.0,0.80,r));gl_FragColor=vec4(c*uExposure,a);}',
   });
   materials.push(floorMaterial);
   const floor = new THREE.Mesh(floorGeometry, floorMaterial);
@@ -569,7 +602,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
       active: true, x: origin.x + (random() - 0.5) * 0.45, y: origin.y + random() * 0.16,
       z: origin.z + (random() - 0.5) * 0.45,
       vx: (random() - 0.4) * (interaction ? 0.56 : 0.2),
-      vy: -(0.15 + random() * 0.22), vz: (random() - 0.5) * 0.26,
+      vy: -(0.15 + random() * 0.22) * 1.25, vz: (random() - 0.5) * 0.325,
       life: interaction ? 11 : 18,
     });
   }
@@ -582,6 +615,9 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
       const visibleWidth = treeWidth * 1.24 / 0.61;
       baseDistance = Math.max(exploreDistance, visibleWidth / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect));
       initialTarget.set(treeCenterX - visibleWidth * 0.185, 4.48, 0);
+    } else if (mode === 'letter') {
+      baseDistance = exploreDistance * (isPortrait ? 1.01 : 1.25);
+      initialTarget.set(isPortrait ? treeCenterX * 0.8 : 0, isPortrait ? 1.55 : 2.35, 0);
     } else {
       baseDistance = exploreDistance;
       initialTarget.set(isPortrait ? treeCenterX * 0.8 : 0, isPortrait ? 4.70 : 4.26, 0);
@@ -603,9 +639,9 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     renderer.setPixelRatio(dpr);
     uniforms.pixelRatio.value = dpr;
     renderer.setSize(width, height, false);
-    tree.scale.set(isPortrait ? 0.84 : 1, isPortrait ? 1.12 : 1, 1);
-    figure.scale.setScalar(isPortrait ? 0.93 : 0.82);
-    succulent.scale.setScalar(isPortrait ? 1.01 : 0.90);
+    tree.scale.set(isPortrait ? 0.84 : 1.13, isPortrait ? 1.03 : 0.92, 1);
+    figure.scale.setScalar(isPortrait ? 1.02 : 0.85);
+    succulent.scale.setScalar(isPortrait ? 0.91 : 0.77);
     tree.updateMatrixWorld(true);
     const treeBounds = new THREE.Box3().setFromObject(tree);
     const treeSize = treeBounds.getSize(new THREE.Vector3());
@@ -638,7 +674,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
   const pointer = new THREE.Vector2();
   const pointers = new Set();
   let tap = null;
-  const figureCenter = new THREE.Vector3(0, 1.06, 0.18);
+  const figureCenter = new THREE.Vector3(0.03, 0.88, 0.22);
   const flowerCenters = treeData.tips.map(tip => tip.center.clone());
   function canvasToRay(clientX, clientY) {
     const rect = canvas.getBoundingClientRect();
@@ -728,7 +764,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     frameTime = now;
     elapsed += delta;
     uniforms.time.value = elapsed;
-    const targetExposure = mode === 'explore' ? 1.07 : mode === 'letter' ? 0.68 : viewportWidth >= 900 ? 0.95 : 0.62;
+    const targetExposure = 1.07;
     uniforms.exposure.value = reducedMotion ? targetExposure : THREE.MathUtils.lerp(uniforms.exposure.value, targetExposure, 1 - Math.exp(-delta * 3.2));
     if (cameraTransition) {
       const t = smoothStep(0, 1.15, elapsed - cameraTransition.start);
@@ -766,8 +802,8 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
         p.active = false; petalPositions.setXYZ(i, 0, -20, 0); changed = true; continue;
       }
       p.life -= delta;
-      p.vy -= delta * 0.035;
-      p.x += (p.vx + Math.sin(elapsed * 1.2 + p.phase) * 0.12) * delta;
+      p.vy -= delta * 0.044;
+      p.x += (p.vx + Math.sin(elapsed * 1.35 + p.phase) * 0.15) * delta;
       p.y += p.vy * delta;
       p.z += p.vz * delta;
       if (p.life <= 0 || p.y < 0.02) { p.active = false; p.y = -20; }
@@ -855,6 +891,10 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
         target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
         distance: camera.position.distanceTo(controls.target),
         activePetals: petalState.filter(p => p.active).length,
+        waving: elapsed - waveStarted >= 0 && elapsed - waveStarted < 3.1,
+        waveProgress: THREE.MathUtils.clamp((elapsed - waveStarted) / 3.1, 0, 1),
+        wavingArmAngle: rightArm.rotation.z,
+        hand: screen(new THREE.Vector3(0.30, -0.40, 0.24).applyMatrix4(rightArm.matrixWorld)),
         pointCount: geometries.reduce((sum, geometry) => sum + (geometry.getAttribute('aSize')?.count || 0), 0),
         performance: {
           renderRateCap: reducedMotion ? 10 : mode === 'explore' ? null : 30,

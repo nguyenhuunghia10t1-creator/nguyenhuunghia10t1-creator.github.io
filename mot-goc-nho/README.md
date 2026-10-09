@@ -91,10 +91,12 @@ Khôi phục bằng `git revert` commit cần bỏ và push bình thường. Kh�
 
 `scene.js` tạo cây bằng BufferGeometry và shader: tán hồng/magenta nhiều lớp, nhánh cyan, quầng sáng mềm và các cánh hoa gần/xa. Hình tham chiếu không được dùng làm nền phẳng. `style.css` giữ không gian đêm tối, bố cục mở thư và chế độ đọc toàn bộ không có khung card.
 
-`particle-letter.js` chỉ nhận nội dung sau khi giải mã trong bộ nhớ. Canvas lấy mẫu nét chữ tiếng Việt một lần mỗi câu, cho hạt tụ lại khoảng 1,5 giây, giữ chữ rõ 3 giây, rồi tan thành hạt/cánh hoa trong khoảng 1,7 giây. Không lưu bản rõ vào tệp, storage hoặc log. Nút “Hiện toàn bộ” hủy hiệu ứng và hiện nguyên văn; “Xem lại hiệu ứng” khởi động lại phần chữ mà không khởi động lại nhạc.
+`particle-letter.js` chỉ nhận nội dung sau khi giải mã trong bộ nhớ. Font Noto Serif có bộ ký tự tiếng Việt được lưu ở `assets/fonts/` và khai báo trong `fonts.css`; không tải Google Fonts khi khách mở trang. Hiệu ứng chờ font sẵn sàng trước khi đo chữ. Các cụm grapheme giữ chữ cái và dấu đi cùng nhau; chuỗi dùng để vẽ được chuẩn hóa NFC, bản gốc và nội dung mã hóa giữ nguyên. Pha đọc dùng chữ HTML thật và hạt đã tắt hoàn toàn để không làm vỡ nét.
+
+Mỗi câu tụ thành từ hạt, giữ rõ khoảng 3 giây rồi tan xuống thành cánh hoa. Cảnh cây tiếp tục sáng và chuyển động; không phủ lớp tối hoặc blur khi đọc. Kết thúc sequence chuyển sang khám phá. “Đọc lại thư” luôn chạy từ câu đầu, không tự mở bản chữ tĩnh. “Hiện toàn bộ” chỉ là chế độ đọc phụ được người xem chọn. Không lưu bản rõ vào tệp, storage hoặc log; mọi thay đổi màn giữ cùng một nguồn nhạc.
 
 Chữ dùng sprite hạt/cánh hoa đã tạo sẵn, giới hạn mật độ và DPR; điện thoại vẽ tối đa 30 khung/giây, thiết bị chậm tự giảm lượng hạt. Khi tab ẩn, chuyển động được tạm dừng. Giảm chuyển động hoặc không tạo được canvas chữ sẽ chuyển ngay sang bản đọc toàn bộ. Cảnh 3D vẫn có fallback tĩnh độc lập.
 
 ## Thư viện và quyền riêng tư khi kiểm tra
 
-Three.js 0.186.1 và OrbitControls được lưu cùng trang dưới `vendor`; giấy phép MIT đi kèm. Không dùng CDN, framework UI, bộ theo dõi hoặc backend. Kiểm thử trình duyệt và ảnh riêng không nằm trong repository.
+Three.js 0.186.1 và OrbitControls được lưu cùng trang dưới `vendor`; giấy phép MIT đi kèm. Noto Serif dùng SIL Open Font License; nguồn và giấy phép có trong `assets/fonts/`. Không dùng CDN lúc chạy, framework UI, bộ theo dõi hoặc backend. Kiểm thử trình duyệt và ảnh riêng không nằm trong repository.

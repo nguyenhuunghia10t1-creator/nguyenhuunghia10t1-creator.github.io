@@ -1,7 +1,7 @@
 const CONVERGE_MS = 1500;
 const READ_MS = 3000;
-const DISSOLVE_MS = 1700;
-const FONT_FAMILY = 'Georgia, "Times New Roman", serif';
+const DISSOLVE_MS = 2200;
+const FONT_FAMILY = '"Gift Noto Serif", serif';
 const clamp = (value, minimum = 0, maximum = 1) => Math.min(maximum, Math.max(minimum, value));
 const easeOutCubic = value => 1 - (1 - value) ** 3;
 const smoothstep = value => { const t = clamp(value); return t * t * (3 - 2 * t); };
@@ -47,71 +47,55 @@ export function splitLetterUnits(text) {
   return units;
 }
 
-export function createParticleLetter({ canvas, onComplete = () => {}, onPhase = () => {} }) {
-  if (!canvas || typeof canvas.getContext !== 'function') throw new TypeError('A canvas is required for the particle letter.');
+export function createParticleLetter({ canvas, copy, onComplete = () => {}, onPhase = () => {}, onError = () => {} }) {
+  if (!canvas || typeof canvas.getContext !== 'function' || !copy) throw new TypeError('The particle letter needs a canvas and a text layer.');
   const context = canvas.getContext('2d', { alpha: true });
-  if (!context) throw new Error('The particle letter canvas is unavailable.');
-  const maskCanvas = document.createElement('canvas');
-  const maskContext = maskCanvas.getContext('2d', { willReadFrequently: true });
-  if (!maskContext) throw new Error('The particle letter mask is unavailable.');
-  const dotSprite = document.createElement('canvas');
-  dotSprite.width = dotSprite.height = 20;
-  const dotContext = dotSprite.getContext('2d');
-  const dotGlow = dotContext.createRadialGradient(10, 10, 0, 10, 10, 10);
-  dotGlow.addColorStop(0, 'rgba(255,247,253,1)');
-  dotGlow.addColorStop(0.3, 'rgba(250,231,244,0.95)');
-  dotGlow.addColorStop(0.63, 'rgba(235,168,215,0.3)');
-  dotGlow.addColorStop(1, 'rgba(221,139,195,0)');
-  dotContext.fillStyle = dotGlow;
-  dotContext.fillRect(0, 0, 20, 20);
-  const fallingDotSprite = document.createElement('canvas');
-  fallingDotSprite.width = fallingDotSprite.height = 20;
-  const fallingDotContext = fallingDotSprite.getContext('2d');
-  fallingDotContext.drawImage(dotSprite, 0, 0);
-  fallingDotContext.globalCompositeOperation = 'source-in';
-  fallingDotContext.fillStyle = '#efb4d6';
-  fallingDotContext.fillRect(0, 0, 20, 20);
+  if (!context) throw new Error('PARTICLE_CANVAS_UNAVAILABLE');
+  if (typeof Intl.Segmenter !== 'function') throw new Error('GRAPHEME_SEGMENTATION_UNAVAILABLE');
+  const segmenter = new Intl.Segmenter('vi', { granularity: 'grapheme' });
+  const measureCanvas = document.createElement('canvas');
+  const measureContext = measureCanvas.getContext('2d', { willReadFrequently: true });
+  if (!measureContext) throw new Error('PARTICLE_MASK_UNAVAILABLE');
+  // Keep the text on a stable compositing layer so fading does not switch its
+  // glyph antialiasing between LCD and grayscale at the readable handoff.
+  copy.style.transform = 'translateZ(0)';
+  const makeSprite = pink => {
+    const sprite = document.createElement('canvas');
+    sprite.width = sprite.height = 16;
+    const target = sprite.getContext('2d');
+    const gradient = target.createRadialGradient(8, 8, 0, 8, 8, 8);
+    gradient.addColorStop(0, pink ? 'rgba(247,197,225,1)' : 'rgba(255,246,252,1)');
+    gradient.addColorStop(0.4, pink ? 'rgba(235,169,212,0.8)' : 'rgba(251,234,246,0.82)');
+    gradient.addColorStop(1, 'rgba(218,147,193,0)');
+    target.fillStyle = gradient;
+    target.fillRect(0, 0, 16, 16);
+    return sprite;
+  };
+  const pointSprite = makeSprite(false);
+  const fallingSprite = makeSprite(true);
   const petalSprite = document.createElement('canvas');
-  petalSprite.width = 24;
-  petalSprite.height = 36;
+  petalSprite.width = 20;
+  petalSprite.height = 32;
   const petalContext = petalSprite.getContext('2d');
-  const petalGradient = petalContext.createLinearGradient(6, 3, 20, 33);
-  petalGradient.addColorStop(0, '#fff2fc');
-  petalGradient.addColorStop(0.4, '#f4bfdc');
-  petalGradient.addColorStop(1, '#c66ca9');
+  const petalGradient = petalContext.createLinearGradient(3, 3, 17, 29);
+  petalGradient.addColorStop(0, '#fff0f9');
+  petalGradient.addColorStop(0.45, '#eeb8d7');
+  petalGradient.addColorStop(1, '#b878a1');
   petalContext.fillStyle = petalGradient;
   petalContext.beginPath();
-  petalContext.moveTo(12, 2);
-  petalContext.bezierCurveTo(24, 9, 23, 26, 10, 34);
-  petalContext.bezierCurveTo(2, 24, 2, 10, 12, 2);
+  petalContext.moveTo(10, 1);
+  petalContext.bezierCurveTo(21, 8, 19, 22, 9, 31);
+  petalContext.bezierCurveTo(1, 23, 1, 9, 10, 1);
   petalContext.fill();
-  const graphemeSegmenter = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter('vi', { granularity: 'grapheme' }) : null;
-  let width = 1;
-  let height = 1;
-  let mobile = false;
-  let pixelRatio = 1;
-  let fontSize = 25;
-  let lineHeight = 34;
-  let lines = [];
-  let units = [];
-  let unitIndex = 0;
-  let particles = null;
-  let phase = 'idle';
-  let elapsed = 0;
-  let lastTimestamp = null;
-  let frame = 0;
-  let generation = 0;
-  let running = false;
-  let disposed = false;
-  let particleStride = 1;
-  let slowFrames = 0;
-  let renderInterval = 0;
-  let lastPaintTimestamp = -Infinity;
-  let repaintRequested = true;
 
-  const graphemes = value => graphemeSegmenter
-    ? Array.from(graphemeSegmenter.segment(value), part => part.segment)
-    : value.match(/\P{M}\p{M}*|\p{M}+/gu) ?? [];
+  let width = 1, height = 1, pixelRatio = 1, fontSize = 26, lineHeight = 37.7;
+  let mobile = true, units = [], groups = [], lines = [], unitIndex = 0;
+  let phase = 'idle', elapsed = 0, lastTimestamp = null, frame = 0, generation = 0;
+  let running = false, disposed = false, fontPromise = null;
+  let particleStride = 1, slowFrames = 0, renderInterval = 1000 / 30;
+  let lastPaintTimestamp = -Infinity, repaintRequested = true;
+  const graphemes = value => Array.from(segmenter.segment(value), part => part.segment);
+  const setCopyOpacity = value => { copy.style.opacity = String(clamp(value)); };
 
   function announce(next) {
     phase = next;
@@ -121,139 +105,200 @@ export function createParticleLetter({ canvas, onComplete = () => {}, onPhase = 
     onPhase({ phase: next, unit: unitIndex, unitCount: units.length });
   }
 
+  async function waitForFont() {
+    if (!document.fonts?.load) throw new Error('FONT_LOADING_UNAVAILABLE');
+    if (!fontPromise) {
+      fontPromise = (async () => {
+        let timer;
+        try {
+          const faces = await Promise.race([
+            document.fonts.load('400 32px "Gift Noto Serif"', 'Ag Đđ Ắằẵặ Ấềễệ Ốỡợ Ứữự Ỵỷỹ'),
+            new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('FONT_LOADING_TIMEOUT')), 7000); }),
+          ]);
+          if (!faces.length || faces.some(face => face.status !== 'loaded')) throw new Error('FONT_NOT_LOADED');
+        } finally { clearTimeout(timer); }
+      })().catch(error => { fontPromise = null; throw error; });
+    }
+    return fontPromise;
+  }
+
   function wrap(text, maximumWidth) {
-    const wrapped = [];
+    const result = [];
     let current = '';
     for (const word of text.trim().split(/\s+/u)) {
       const candidate = current ? `${current} ${word}` : word;
-      if (maskContext.measureText(candidate).width <= maximumWidth) { current = candidate; continue; }
-      if (current) { wrapped.push(current); current = ''; }
-      if (maskContext.measureText(word).width <= maximumWidth) { current = word; continue; }
-      for (const grapheme of graphemes(word)) {
-        if (current && maskContext.measureText(current + grapheme).width > maximumWidth) {
-          wrapped.push(current);
-          current = '';
-        }
-        current += grapheme;
+      if (measureContext.measureText(candidate).width <= maximumWidth) { current = candidate; continue; }
+      if (current) { result.push(current); current = ''; }
+      if (measureContext.measureText(word).width <= maximumWidth) { current = word; continue; }
+      for (const glyph of graphemes(word)) {
+        if (current && measureContext.measureText(current + glyph).width > maximumWidth) { result.push(current); current = ''; }
+        current += glyph;
       }
     }
-    if (current) wrapped.push(current);
-    return wrapped;
+    if (current) result.push(current);
+    return result;
   }
 
-  function textLines(target, alpha = 1) {
-    target.font = `${fontSize}px ${FONT_FAMILY}`;
-    target.textAlign = 'center';
-    target.textBaseline = 'middle';
-    target.fillStyle = `rgba(250,231,244,${alpha})`;
-    const top = (height - lines.length * lineHeight) / 2 + lineHeight / 2;
-    for (let index = 0; index < lines.length; index++) target.fillText(lines[index], width / 2, top + index * lineHeight);
+  function glyphPoints(glyph) {
+    const font = `400 ${fontSize}px ${FONT_FAMILY}`;
+    measureContext.font = font;
+    const metrics = measureContext.measureText(glyph);
+    const padding = 3;
+    const originX = padding + Math.max(0, metrics.actualBoundingBoxLeft || 0);
+    const originY = padding + Math.max(0, metrics.actualBoundingBoxAscent || fontSize);
+    measureCanvas.width = Math.max(1, Math.ceil(originX + Math.max(metrics.actualBoundingBoxRight || 0, metrics.width) + padding));
+    measureCanvas.height = Math.max(1, Math.ceil(originY + Math.max(0, metrics.actualBoundingBoxDescent || 0) + padding));
+    measureContext.font = font;
+    measureContext.textAlign = 'left';
+    measureContext.textBaseline = 'alphabetic';
+    measureContext.fillStyle = '#ffffff';
+    measureContext.fillText(glyph, originX, originY);
+    const raster = measureContext.getImageData(0, 0, measureCanvas.width, measureCanvas.height);
+    const coordinates = [];
+    for (let y = 0; y < raster.height; y += 2) for (let x = 0; x < raster.width; x += 2) {
+      if (raster.data[(y * raster.width + x) * 4 + 3] > 96) coordinates.push(x, y);
+    }
+    return { coordinates, originX, originY, fontAscent: metrics.fontBoundingBoxAscent || fontSize * 1.08 };
   }
 
-  function sampleCurrentUnit() {
-    if (!units[unitIndex]) { particles = null; lines = []; return; }
-    maskCanvas.width = Math.max(1, Math.round(width));
-    maskCanvas.height = Math.max(1, Math.round(height));
-    const maximumWidth = Math.max(30, Math.min(width - (mobile ? 40 : 112), mobile ? 560 : 900));
-    fontSize = mobile ? 25 : 34;
+  function buildCurrentUnit() {
+    if (!units[unitIndex]) return;
+    // NFC is a rendering-only copy. The original input and unit slices are never
+    // normalized or rewritten. This avoids system-font fallback for NFD marks
+    // absent from upstream WOFF2 subsets while preserving canonical spelling.
+    const displayText = units[unitIndex].normalize('NFC');
+    const maximumWidth = Math.max(40, Math.min(width - (mobile ? 24 : 64), mobile ? 560 : 820));
+    fontSize = mobile ? 26 : 32;
     do {
-      maskContext.font = `${fontSize}px ${FONT_FAMILY}`;
-      lines = wrap(units[unitIndex], maximumWidth);
-      lineHeight = fontSize * 1.4;
-      if (lines.length * lineHeight <= Math.max(48, height - 56) || fontSize <= 17) break;
+      measureContext.font = `400 ${fontSize}px ${FONT_FAMILY}`;
+      lines = wrap(displayText, maximumWidth);
+      lineHeight = fontSize * 1.45;
+      if (lines.length * lineHeight <= Math.max(60, height - 28) || fontSize <= 18) break;
       fontSize--;
-    } while (fontSize > 16);
-    maskContext.clearRect(0, 0, width, height);
-    textLines(maskContext);
-    const raster = maskContext.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
-    const maximumParticles = mobile ? 5000 : 9000;
-    const candidates = [];
-    // Sample in CSS pixels once per unit/resize, never during an animation frame.
-    for (let y = 0; y < raster.height; y += 2) {
-      for (let x = 0; x < raster.width; x += 2) {
-        const alpha = raster.data[(y * raster.width + x) * 4 + 3];
-        if (alpha > 80) candidates.push(x, y, alpha / 255);
+    } while (fontSize >= 18);
+    copy.replaceChildren();
+    const top = (height - lines.length * lineHeight) / 2;
+    const fragment = document.createDocumentFragment();
+    const lineElements = lines.map((text, index) => {
+      const line = document.createElement('span');
+      line.className = 'particle-copy-line';
+      line.textContent = text;
+      Object.assign(line.style, {
+        position: 'absolute', left: '0', top: `${top + index * lineHeight}px`, width: '100%',
+        display: 'block', margin: '0', padding: '0', height: `${lineHeight}px`,
+        font: `400 ${fontSize}px/${lineHeight}px ${FONT_FAMILY}`, fontSynthesis: 'none',
+        fontKerning: 'normal', letterSpacing: 'normal', textAlign: 'center', whiteSpace: 'pre',
+        color: '#fae7f4', textShadow: 'none', background: 'transparent',
+      });
+      fragment.append(line);
+      return line;
+    });
+    copy.append(fragment);
+    const canvasRectangle = canvas.getBoundingClientRect();
+    const range = document.createRange();
+    const prepared = [];
+    let totalPoints = 0;
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const node = lineElements[lineIndex].firstChild;
+      let offset = 0;
+      for (const glyph of graphemes(lines[lineIndex])) {
+        const end = offset + glyph.length;
+        if (glyph.trim()) {
+          range.setStart(node, offset);
+          range.setEnd(node, end);
+          const rectangle = range.getBoundingClientRect();
+          const sampled = glyphPoints(glyph);
+          const seed = Math.random();
+          const pointCount = sampled.coordinates.length / 2;
+          prepared.push({
+            x: rectangle.left - canvasRectangle.left - sampled.originX,
+            y: rectangle.top - canvasRectangle.top + sampled.fontAscent - sampled.originY,
+            coordinates: sampled.coordinates, seed,
+            startX: (seed - 0.5) * Math.min(width * 0.7, 260),
+            startY: -35 - Math.random() * Math.min(height * 0.28, 90),
+          });
+          totalPoints += pointCount;
+        }
+        offset = end;
       }
     }
-    const available = candidates.length / 3;
-    const count = Math.min(maximumParticles, available);
-    particles = {
-      count, x: new Float32Array(count), y: new Float32Array(count),
-      startX: new Float32Array(count), startY: new Float32Array(count),
-      seed: new Float32Array(count), size: new Float32Array(count), alpha: new Float32Array(count),
-    };
-    for (let index = 0; index < count; index++) {
-      const offset = Math.floor(index * available / count) * 3;
-      const x = candidates[offset];
-      const y = candidates[offset + 1];
-      const angle = Math.random() * Math.PI * 2;
-      const radius = 60 + Math.random() * Math.min(width, height) * 0.55;
-      particles.x[index] = x;
-      particles.y[index] = y;
-      particles.startX[index] = x + Math.cos(angle) * radius;
-      particles.startY[index] = y + Math.sin(angle) * radius - 30;
-      particles.seed[index] = Math.random();
-      particles.size[index] = 0.8 + Math.random() * 1.15;
-      particles.alpha[index] = candidates[offset + 2] * (0.6 + Math.random() * 0.4);
-    }
+    range.detach();
+    const cap = mobile ? 5000 : 9000;
+    const samplingStride = Math.max(1, Math.ceil(totalPoints / cap));
+    let maskPointIndex = 0;
+    groups = prepared.map(group => {
+      const selected = [];
+      for (let index = 0; index < group.coordinates.length; index += 2) {
+        if (maskPointIndex++ % samplingStride === 0) selected.push(group.coordinates[index], group.coordinates[index + 1]);
+      }
+      const points = new Float32Array(selected);
+      const { coordinates, ...placement } = group;
+      return { ...placement, points };
+    });
   }
 
   function paint() {
     context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     context.clearRect(0, 0, width, height);
-    if (!particles) return;
-    if (phase === 'reading') {
-      textLines(context, 1);
-      return;
-    }
+    if (!groups.length) { setCopyOpacity(phase === 'reading' ? 1 : 0); return; }
+    if (phase === 'reading') { setCopyOpacity(1); return; }
     const forming = phase === 'converging';
     const progress = clamp(elapsed / (forming ? CONVERGE_MS : DISSOLVE_MS));
-    const crispAlpha = forming ? smoothstep((progress - 0.55) / 0.4) : 1 - smoothstep(progress / 0.42);
-    if (crispAlpha > 0) textLines(context, crispAlpha);
-    for (let index = 0; index < particles.count; index += particleStride) {
-      const seed = particles.seed[index];
-      let x;
-      let y;
-      let alpha;
+    // There is no glyph/particle overlap: the point layer is fully transparent
+    // before native DOM text appears, and vice versa during dissolution.
+    const copyOpacity = forming ? smoothstep((progress - 0.78) / 0.22) : 1 - smoothstep((progress - 0.08) / 0.16);
+    const pointOpacity = forming ? smoothstep(progress / 0.12) * (1 - smoothstep((progress - 0.45) / 0.3)) : smoothstep((progress - 0.25) / 0.1);
+    setCopyOpacity(copyOpacity);
+    if (pointOpacity <= 0) return;
+    for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+      const group = groups[groupIndex];
+      const seed = group.seed;
+      let translateX, translateY, scatter = 0, alpha = pointOpacity, released = 0;
       if (forming) {
-        const local = clamp((progress - seed * 0.15) / (1 - seed * 0.15));
-        const convergence = easeOutCubic(local);
-        const drift = (1 - convergence) * Math.sin(local * 7 + seed * 12) * 15;
-        x = particles.startX[index] + (particles.x[index] - particles.startX[index]) * convergence + drift;
-        y = particles.startY[index] + (particles.y[index] - particles.startY[index]) * convergence;
-        alpha = smoothstep(local / 0.3) * (1 - crispAlpha * 0.67);
+        const convergence = easeOutCubic(clamp((progress - seed * 0.08) / 0.7));
+        translateX = group.x + group.startX * (1 - convergence);
+        translateY = group.y + group.startY * (1 - convergence);
       } else {
-        const released = clamp((progress - seed * 0.16) / (1 - seed * 0.16));
-        x = particles.x[index] + Math.sin(released * 5 + seed * 12) * released * (25 + seed * 50) + (seed - 0.5) * released * 44;
-        y = particles.y[index] + released * released * (70 + seed * Math.min(160, height * 0.45));
-        alpha = (1 - smoothstep(released)) * (0.35 + smoothstep(progress / 0.25) * 0.65);
+        released = clamp((progress - 0.32 - seed * 0.035) / (0.68 - seed * 0.035));
+        const fall = released ** 1.45;
+        translateX = group.x + Math.sin(released * 3 + seed * 7) * released * (12 + seed * 32);
+        translateY = group.y + fall * Math.max(80, height - group.y + 34);
+        scatter = smoothstep((released - 0.3) / 0.7) * (5 + seed * 14);
+        alpha *= 1 - smoothstep((released - 0.68) / 0.32);
       }
-      context.globalAlpha = alpha * particles.alpha[index];
-      const radius = particles.size[index];
-      const dotSize = radius * 3;
-      if (!forming && seed < 0.065 && progress > 0.06) {
-        // A sparse set of cached petals replaces glyph points as they release.
-        // No per-particle blur or new rasterization is performed here.
-        const petalHeight = (6 + radius * 2.5) * smoothstep(progress / 0.2);
-        const petalWidth = petalHeight * (0.45 + Math.abs(Math.sin(progress * 6 + seed * 40)) * 0.24);
-        context.save();
-        context.translate(x, y);
-        context.rotate(seed * 60 + progress * (2 + seed * 25));
-        context.drawImage(petalSprite, -petalWidth / 2, -petalHeight / 2, petalWidth, petalHeight);
-        context.restore();
-      } else {
-        context.drawImage(forming ? dotSprite : fallingDotSprite, x - dotSize / 2, y - dotSize / 2, dotSize, dotSize);
+      context.globalAlpha = alpha * (0.74 + seed * 0.2);
+      for (let point = 0; point < group.points.length / 2; point += particleStride) {
+        const x = translateX + group.points[point * 2] + Math.sin(point * 2.4 + seed * 8) * scatter;
+        const y = translateY + group.points[point * 2 + 1] + Math.cos(point * 1.7 + seed * 6) * scatter * 0.45;
+        if (!forming && released > 0.12 && (point + groupIndex) % 23 === 0) {
+          const petalHeight = 5 + seed * 5;
+          const petalWidth = petalHeight * (0.42 + Math.abs(Math.sin(released * 5 + point)) * 0.25);
+          context.save();
+          context.translate(x, y);
+          context.rotate(seed * 7 + released * (2 + seed * 4));
+          context.drawImage(petalSprite, -petalWidth / 2, -petalHeight / 2, petalWidth, petalHeight);
+          context.restore();
+        } else {
+          const size = 2.2 + seed * 0.8;
+          context.drawImage(forming ? pointSprite : fallingSprite, x - size / 2, y - size / 2, size, size);
+        }
       }
     }
     context.globalAlpha = 1;
   }
 
+  function fail(error, token) {
+    if (token !== generation || disposed) return;
+    stop();
+    onError(error instanceof Error ? error : new Error('PARTICLE_RENDER_FAILED'));
+  }
   function schedule() {
     if (!running || disposed || document.hidden || frame) return;
     const token = generation;
-    frame = requestAnimationFrame(timestamp => tick(timestamp, token));
+    frame = requestAnimationFrame(timestamp => {
+      try { tick(timestamp, token); } catch (error) { fail(error, token); }
+    });
   }
-
   function tick(timestamp, token) {
     frame = 0;
     if (disposed || !running || token !== generation) return;
@@ -270,15 +315,18 @@ export function createParticleLetter({ canvas, onComplete = () => {}, onPhase = 
         unitIndex++;
         if (unitIndex >= units.length) {
           running = false;
-          particles = null;
+          groups = [];
           lines = [];
           context.clearRect(0, 0, width, height);
+          setCopyOpacity(0);
+          copy.replaceChildren();
           announce('complete');
+          if (token !== generation || disposed) return;
           units = [];
-          if (token === generation && !disposed) onComplete();
+          onComplete();
           return;
         }
-        sampleCurrentUnit();
+        buildCurrentUnit();
         announce('converging');
       }
     }
@@ -290,29 +338,25 @@ export function createParticleLetter({ canvas, onComplete = () => {}, onPhase = 
       lastPaintTimestamp = timestamp;
       repaintRequested = false;
       slowFrames = cost > 11 || delta > 30 ? slowFrames + 1 : Math.max(0, slowFrames - 1);
-      if (slowFrames >= 10 && particleStride < 3) {
-        particleStride++;
-        renderInterval = 1000 / 30;
-        slowFrames = 0;
-      }
+      if (slowFrames >= 10 && particleStride < 3) { particleStride++; renderInterval = 1000 / 30; slowFrames = 0; }
     }
     schedule();
   }
-
   function resize() {
     if (disposed) return;
     const rectangle = canvas.getBoundingClientRect();
     width = Math.max(1, rectangle.width || canvas.clientWidth || window.innerWidth);
     height = Math.max(1, rectangle.height || canvas.clientHeight || window.innerHeight);
     mobile = width < 600;
-    renderInterval = mobile || particleStride > 1 ? 1000 / 30 : 1000 / 60;
     pixelRatio = Math.min(1.5, window.devicePixelRatio || 1);
+    renderInterval = mobile || particleStride > 1 ? 1000 / 30 : 1000 / 60;
     canvas.width = Math.max(1, Math.round(width * pixelRatio));
     canvas.height = Math.max(1, Math.round(height * pixelRatio));
     context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-    if (running) { sampleCurrentUnit(); paint(); }
+    if (running) {
+      try { buildCurrentUnit(); paint(); } catch (error) { fail(error, generation); }
+    }
   }
-
   function stop() {
     generation++;
     running = false;
@@ -323,48 +367,52 @@ export function createParticleLetter({ canvas, onComplete = () => {}, onPhase = 
     lastPaintTimestamp = -Infinity;
     repaintRequested = true;
     units = [];
-    particles = null;
+    groups = [];
     lines = [];
+    setCopyOpacity(0);
+    copy.replaceChildren();
     context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     context.clearRect(0, 0, width, height);
     if (!disposed) announce('idle');
   }
-
-  function start(text) {
-    if (disposed) return;
+  async function start(text) {
+    if (disposed) return false;
     stop();
     const token = generation;
     units = splitLetterUnits(text);
     unitIndex = 0;
     if (!units.length) {
-      queueMicrotask(() => {
-        if (token !== generation || disposed) return;
-        announce('complete');
-        onComplete();
-      });
-      return;
+      await Promise.resolve();
+      if (token !== generation || disposed) return false;
+      announce('complete');
+      if (token === generation && !disposed) onComplete();
+      return true;
     }
-    running = true;
-    resize();
-    announce('converging');
-    paint();
-    schedule();
+    announce('loading');
+    try {
+      await waitForFont();
+      if (token !== generation || disposed) return false;
+      running = true;
+      resize();
+      if (token !== generation || !running || disposed) return false;
+      announce('converging');
+      paint();
+      schedule();
+      return true;
+    } catch (error) { fail(error, token); return false; }
   }
-
   function visibilityChanged() {
     if (disposed || !running) return;
     lastTimestamp = null;
     if (document.hidden) { cancelAnimationFrame(frame); frame = 0; }
     else schedule();
   }
-
   const resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(resize) : null;
   resizeObserver?.observe(canvas);
   window.addEventListener('resize', resize);
   document.addEventListener('visibilitychange', visibilityChanged);
   resize();
   announce('idle');
-
   return {
     start, stop, resize,
     dispose() {

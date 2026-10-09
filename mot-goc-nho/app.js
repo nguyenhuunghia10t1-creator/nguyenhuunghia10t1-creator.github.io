@@ -1,7 +1,7 @@
 import {decryptLetter} from './crypto.js';
 import {createMusic} from './music.js';
 import musicConfig from './music-config.js';
-import {createParticleLetter} from './particle-letter.js';
+import {createParticleLetter} from './particle-letter.js?v=20261009-r3';
 
 const $ = id => document.getElementById(id);
 const reducedQuery = matchMedia('(prefers-reduced-motion: reduce)');
@@ -10,15 +10,18 @@ let scene = null;
 let opening = false;
 let openedText = '';
 let typingComplete = false;
+let presentationGeneration = 0;
 let dialogueTimer = 0;
 let envelopePromise;
 const music = createMusic(musicConfig, {root: $('music-root')});
 let letterEffect;
 try { letterEffect = createParticleLetter({
   canvas: $('particle-text'),
-  onComplete: completeLetter,
+  copy: $('particle-copy'),
+  onComplete: finishSequence,
+  onError: completeLetter,
   onPhase: ({phase,unit,unitCount}) => {
-    $('letter-progress').textContent = phase === 'idle' || phase === 'complete' ? '' : `${String(unit+1).padStart(2,'0')} / ${String(unitCount).padStart(2,'0')}`;
+    $('letter-progress').textContent = phase === 'idle' || phase === 'complete' ? '' : phase === 'loading' ? 'Một chút thôi…' : `${String(unit+1).padStart(2,'0')} / ${String(unitCount).padStart(2,'0')}`;
   }
 }); } catch { letterEffect = null; }
 try { music.init(); } catch { $('music-root').hidden = true; }
@@ -48,12 +51,13 @@ function setView(view) {
   scene?.setMode(view);
 }
 function completeLetter() {
+  presentationGeneration++;
   letterEffect?.stop();
   document.body.dataset.letterMode='full';
   const blocks = openedText.trimEnd().split(/\n\n/);
   $('letter-content').replaceChildren(...blocks.map((text,index)=>{
     const paragraph=document.createElement('p');
-    paragraph.textContent=text;
+    paragraph.textContent=text.normalize('NFC');
     if(index===0) paragraph.className='dateline';
     return paragraph;
   }));
@@ -64,7 +68,13 @@ function completeLetter() {
   $('replay-button').hidden=reducedMotion||!letterEffect;
   $('explore-button').hidden=false;
 }
-function typeLetter() {
+function finishSequence() {
+  typingComplete=true;
+  setView('explore');
+  $('reread-button').focus({preventScroll:true});
+}
+async function typeLetter() {
+  const generation=++presentationGeneration;
   typingComplete=false;
   document.body.dataset.letterMode='cinematic';
   $('letter-content').replaceChildren();
@@ -75,7 +85,7 @@ function typeLetter() {
   $('explore-button').hidden=true;
   $('letter-scroll').scrollTop=0;
   if(reducedMotion || !letterEffect) { completeLetter(); return; }
-  try { letterEffect.start(openedText); } catch { completeLetter(); }
+  try { await letterEffect.start(openedText); } catch { if(generation===presentationGeneration)completeLetter(); }
 }
 $('open-form').addEventListener('submit', async event=>{
   event.preventDefault();
@@ -111,7 +121,7 @@ $('open-form').addEventListener('submit', async event=>{
     $('password').value='';
     status.textContent='';
     setView('letter');
-    typeLetter();
+    await typeLetter();
     (typingComplete?$('letter-scroll'):$('reveal-button')).focus({preventScroll:true});
   } catch(error) {
     status.classList.add('error');
@@ -133,18 +143,18 @@ $('password-toggle').addEventListener('click',()=>{
 $('reveal-button').addEventListener('click',completeLetter);
 $('replay-button').addEventListener('click',()=>{typeLetter();$('reveal-button').focus({preventScroll:true});});
 $('explore-button').addEventListener('click',()=>{if(!typingComplete)return;setView('explore');$('reread-button').focus({preventScroll:true});});
-$('reread-button').addEventListener('click',()=>{setView('letter');completeLetter();$('letter-scroll').scrollTop=0;$('letter-scroll').focus({preventScroll:true});});
+$('reread-button').addEventListener('click',()=>{setView('letter');typeLetter();(reducedMotion||!letterEffect?$('letter-scroll'):$('reveal-button')).focus({preventScroll:true});});
 $('reset-button').addEventListener('click',()=>scene?.reset());
 function updateMotion(){document.body.classList.toggle('reduced-motion',reducedMotion);$('motion-toggle').setAttribute('aria-pressed',String(reducedMotion));$('motion-toggle').setAttribute('aria-label',reducedMotion?'Bật chuyển động nhẹ':'Giảm chuyển động');scene?.setReducedMotion(reducedMotion);if(reducedMotion&&openedText&&!typingComplete)completeLetter();$('replay-button').hidden=reducedMotion||!typingComplete||!letterEffect;}
 $('motion-toggle').addEventListener('click',()=>{reducedMotion=!reducedMotion;updateMotion();});
 reducedQuery.addEventListener('change',event=>{reducedMotion=event.matches;updateMotion();});
 updateMotion();
 function fallback(){document.body.classList.add('fallback');$('scene-status').textContent='Một góc tĩnh lặng — em vẫn có thể đọc thư bình thường.';$('gesture-hint').textContent='Một góc bình yên, để em ngồi lại một chút.';$('reset-button').hidden=true;}
-import('./scene.js').then(async ({createScene})=>{
+import('./scene.js?v=20261009-r3').then(async ({createScene})=>{
   scene=await createScene({canvas:$('scene'),reducedMotion,onReady:()=>{$('scene-status').textContent='';},onFallback:fallback,onDialogue:text=>{$('dialogue').textContent=text;$('dialogue').hidden=false;clearTimeout(dialogueTimer);dialogueTimer=setTimeout(()=>{$('dialogue').hidden=true;},5500);}});
   scene?.setMode(document.body.dataset.view);
   // Coordinates/state only, made available to local QA without exposing the letter.
   document.addEventListener('gift:scene-probe',()=>document.dispatchEvent(new CustomEvent('gift:scene-state',{detail:scene?.getProjectionTargets?.()??null})));
 }).catch(fallback);
 window.addEventListener('pagehide',()=>{letterEffect?.stop();clearTimeout(dialogueTimer);});
-window.addEventListener('pageshow',event=>{if(event.persisted&&openedText&&!typingComplete)completeLetter();});
+window.addEventListener('pageshow',event=>{if(event.persisted&&openedText&&!typingComplete&&document.body.dataset.view==='letter')typeLetter();});
