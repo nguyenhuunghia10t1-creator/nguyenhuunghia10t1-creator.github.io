@@ -96,3 +96,65 @@ export function lyricAtTime(timeline, mediaTime, options = {}) {
   const nextText = options.showNext !== false && next?.text && next.time - time <= nextLimit ? next.text : '';
   return { index, text: cue.text, nextText, time, start: cue.time, end, phase, progress: Math.min(1, Math.max(0, progress)) };
 }
+
+/** Acoustic word/syllable timestamps. Untimed ad-libs stay in the source data. */
+export function parseWordLyrics(input) {
+  const data = typeof input === 'string' ? JSON.parse(input) : input;
+  if (!Array.isArray(data?.lines)) throw new TypeError('Lyrics need timed word lines.');
+  const cues = [];
+  let previousStart = -1;
+  for (const line of data.lines) {
+    if (!Array.isArray(line?.words)) throw new TypeError('A lyric line needs words.');
+    const words = [];
+    for (const word of line.words) {
+      if (word?.start === null && word?.end === null && word?.needsReview) continue;
+      if (!finite(word?.start) || !finite(word?.end) || word.start < 0 || word.end <= word.start || typeof word.text !== 'string') throw new TypeError('Invalid word timestamp.');
+      if (word.start < previousStart) throw new TypeError('Word starts must follow the audio order.');
+      previousStart = word.start;
+      words.push({...word, text: word.text.normalize('NFC')});
+    }
+    if (!words.length) continue;
+    const text = words.map((word, index) => `${index && word.spaceBefore !== false ? ' ' : ''}${word.text}`).join('');
+    cues.push({time: words[0].start, end: Math.max(...words.map(word => word.end)),
+      displayEnd: finite(line.displayEnd) ? line.displayEnd : null, text, words, sourceLineId: line.id});
+  }
+  const duration = finite(data.audio?.duration) ? data.audio.duration : null;
+  if (duration !== null && cues.some(cue => cue.end > duration)) throw new TypeError('Lyrics exceed the MP3 duration.');
+  return {cues, duration, offsetMs: finite(data.offsetSeconds) ? data.offsetSeconds * 1000 : 0,
+    metadata: data.alignment || {}, hasLyrics: cues.length > 0, wordLevel: true};
+}
+
+/** Pure media-clock selection; seeking, looping and pausing need no lyric timer. */
+export function wordLyricAtTime(timeline, mediaTime, options = {}) {
+  const time = mediaTime + ((timeline?.offsetMs || 0) + (finite(options.offsetMs) ? options.offsetMs : 0)) / 1000;
+  const empty = {index: -1, text: '', nextText: '', words: [], layers: [], time, start: null, end: null, phase: 'empty', progress: 0};
+  const cues = timeline?.cues || [];
+  const duration = Math.min(timeline?.duration ?? Infinity,
+    finite(options.mediaDuration) && options.mediaDuration > 0 ? options.mediaDuration : Infinity);
+  if (!finite(time) || !cues.length || options.ended || time >= duration) return empty;
+  let low = 0, high = cues.length - 1, index = -1;
+  while (low <= high) {
+    const middle = (low + high) >> 1;
+    if (cues[middle].time <= time) {index = middle; low = middle + 1;}
+    else high = middle - 1;
+  }
+  if (index < 0) return empty;
+  const fade = Math.max(0.02, (options.crossfadeMs ?? 180) / 1000);
+  const hold = Math.max(0, (options.lineHoldMs ?? 900) / 1000);
+  const ease = value => {const t = Math.min(1, Math.max(0, value)); return t * t * (3 - 2 * t);};
+  const endFor = n => Math.min(cues[n].displayEnd ?? cues[n].end + hold,
+    cues[n + 1] ? cues[n + 1].time + fade : Infinity, duration);
+  const layers = [];
+  for (const n of [index - 1, index]) {
+    if (n < 0) continue;
+    const cue = cues[n], end = endFor(n);
+    if (time >= end) continue;
+    const fading = ease((time - (end - fade)) / fade);
+    layers.push({index: n, cue, opacity: 1 - fading, translateY: -4 * fading});
+  }
+  if (!layers.length) return {...empty, index};
+  const cue = cues[index], end = endFor(index);
+  return {index, text: cue.text, nextText: '', words: cue.words, layers, time, start: cue.time, end,
+    phase: layers.length > 1 ? 'crossfading' : time >= end - fade ? 'dissolving' : 'stable',
+    progress: Math.min(1, Math.max(0, (time - cue.time) / Math.max(.001, end - cue.time)))};
+}

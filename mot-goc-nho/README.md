@@ -69,7 +69,7 @@ YouTube dùng player chính thức, hiển thị tối thiểu 200×200, tạm d
 
 ## Lời hát trong chế độ khám phá
 
-`lyrics-config.js` chọn LRC và `offsetMs`; `LYRICS.md` hướng dẫn dữ liệu, mốc kết thúc đoạn hát và hiệu chỉnh. Lời chỉ hiển thị trong chế độ khám phá khi có dữ liệu thật khớp nguồn MP3. Tất cả pha tụ/tan lấy từ `audio.currentTime`; tạm dừng giữ nguyên hiệu ứng, tắt tiếng vẫn tiếp tục. Đọc lại thư chạy sequence từ đầu và ẩn lời hát; quay về cây chọn lại câu ở vị trí hiện tại của cùng MP3. Không có đồng hồ lời riêng hoặc nguồn âm thanh thứ hai.
+`lyrics-config.js` chọn JSON có mốc từng âm tiết và `offsetMs`; `LYRICS.md` ghi cách căn từ MP3 và các cờ cần nghe kiểm tra. Lời chỉ hiện trong chế độ khám phá; dùng HTML opacity và dịch nhẹ, giữ sẵn vị trí câu, không có particle lyric. Mọi pha chữ và chuyển câu lấy từ `audio.currentTime` của cùng MP3. Tạm dừng giữ nguyên chữ; tua, lặp, đổi tốc độ chọn lại theo audio. Đọc lại thư ẩn lời hát. Cây 3D, hiệu ứng thư và nguồn nhạc giữ nguyên.
 
 ## Kiểm tra và xuất bản thay đổi
 

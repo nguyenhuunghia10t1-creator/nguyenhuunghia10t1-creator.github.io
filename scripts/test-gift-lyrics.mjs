@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {parseLrc,parseTimestampedLyrics,lyricAtTime} from '../mot-goc-nho/lyrics-timing.js';
+import {parseLrc,parseTimestampedLyrics,lyricAtTime,parseWordLyrics,wordLyricAtTime} from '../mot-goc-nho/lyrics-timing.js';
 
 let count=0;
 function check(name,run){run();count++;console.log(`PASS ${name}`);}
@@ -67,5 +67,36 @@ check('Preview never crosses a blank instrumental cue',()=>{
  assert.equal(lyricAtTime(timeline,17).nextText,'');
  assert.equal(lyricAtTime(timeline,7,{showNext:false}).nextText,'');
  assert.equal(lyricAtTime(timeline,6,{nextPreviewMs:1000}).nextText,'');
+});
+const wordData={audio:{duration:20},lines:[
+ {id:0,words:[{id:0,text:'Đêm',start:2,end:2.3},{id:1,text:'yên.',start:2.7,end:3}]},
+ {id:1,words:[{id:2,text:'Gió',start:3.5,end:3.8},{id:3,text:'nhẹ.',start:4.2,end:4.6},
+  {id:4,text:'(ah)',start:null,end:null,needsReview:true}]},
+]};
+const wordTimeline=parseWordLyrics(wordData);
+check('Word timestamps preserve syllables and omit explicitly untimed vocals',()=>{
+ assert.equal(wordTimeline.cues[1].words.length,2);
+ assert.equal(wordTimeline.cues[0].text,'Đêm yên.');
+ assert.equal(wordLyricAtTime(wordTimeline,1.9).layers.length,0);
+ assert.deepEqual(wordLyricAtTime(wordTimeline,2.6).words.filter(w=>w.start<=2.6).map(w=>w.text),['Đêm']);
+});
+check('Adjacent word lines overlap briefly without an empty transition frame',()=>{
+ const s=wordLyricAtTime(wordTimeline,3.55);
+ assert.deepEqual(s.layers.map(l=>l.index),[0,1]);
+ assert(s.layers[0].opacity>0&&s.layers[0].opacity<1);
+ assert.equal(wordLyricAtTime(wordTimeline,3.8).layers.length,1);
+});
+check('Word seek, loop, pause and offset use only supplied media position',()=>{
+ assert.equal(wordLyricAtTime(wordTimeline,4.3).index,1);
+ assert.equal(wordLyricAtTime(wordTimeline,2.8).index,0);
+ assert.equal(wordLyricAtTime(wordTimeline,0).layers.length,0);
+ assert.deepEqual(wordLyricAtTime(wordTimeline,3.55),wordLyricAtTime(wordTimeline,3.55));
+ assert.equal(wordLyricAtTime(wordTimeline,1.9,{offsetMs:150}).index,0);
+ assert.equal(wordLyricAtTime(wordTimeline,20).layers.length,0);
+});
+check('Malformed, decreasing or out-of-audio word timestamps fail closed',()=>{
+ assert.throws(()=>parseWordLyrics({lines:[{words:[{text:'A',start:1,end:1}]}]}));
+ assert.throws(()=>parseWordLyrics({lines:[{words:[{text:'A',start:2,end:3},{text:'B',start:1,end:2}]}]}));
+ assert.throws(()=>parseWordLyrics({audio:{duration:1},lines:[{words:[{text:'A',start:.5,end:2}]}]}));
 });
 console.log(`${count} lyric timing checks passed.`);

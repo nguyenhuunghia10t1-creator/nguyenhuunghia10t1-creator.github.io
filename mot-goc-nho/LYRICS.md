@@ -1,31 +1,38 @@
-# Lời hát đồng bộ với MP3
+# Lời hát theo từng âm tiết
 
-Khu vực lời hát chỉ xuất hiện khi khám phá cây. Nhạc vẫn là cùng một phần tử audio từ khi mở trang; đọc lại thư không tạo hoặc khởi động lại nguồn nhạc.
+`assets/lyrics.txt` giữ nguyên lời được cung cấp. `assets/thanh-tan.words.json` là dữ liệu đang dùng: 38 câu, 397 âm tiết lời chính có `start`/`end` tính bằng giây từ đầu MP3. Không chia đều thời gian của câu để tạo mốc từ.
 
-Bản hiện tại: `assets/thanh-tan.lrc` cho MP3 Thanh Tân — Vương Bình, trong ấn bản ANH BỜ VAI do người quản lý cung cấp. 35 câu giữ nguyên lời được cung cấp; hai dòng tên bài/ca sĩ là metadata. MP3 dài 213,10694 giây, SHA-256 `75453e15718b55194e86c9c581625d393ea2dfb35ac4a6e2d4478b9c5418722c`.
+MP3 Thanh Tân — Vương Bình, ấn bản ANH BỜ VAI, dài 213,106939 giây; SHA-256 `75453e15718b55194e86c9c581625d393ea2dfb35ac4a6e2d4478b9c5418722c`. Bản trên website và bản được gửi có cùng byte. MP3, cấu hình nhạc, bản mã thư và các hiệu ứng cây/thư giữ nguyên.
 
-Mốc đầu từng câu được căn từ âm thanh bằng hai lượt nhận dạng small/medium chạy cục bộ và đối chiếu thứ tự từ. Chênh giữa hai lượt có trung vị 0,26 giây, lớn nhất 0,48 giây. Lượt nhận dạng có hallucination và các mốc ép căn sai ở biên cửa sổ đã bị loại. Đây là mốc ước lượng từ âm thanh, chưa phải kết quả nghe soát thủ công để khẳng định chính xác tuyệt đối. Lời bắt đầu ở 21,61 giây, kết thúc ở 185,68 giây; đoạn dạo đầu và cuối được để trống. Timestamp bản lời gửi ban đầu vượt độ dài MP3, nên không được dùng hay co giãn tự động.
+## Cách tạo mốc
 
-## Dữ liệu
+1. Tách giọng bằng Demucs 4.0.1, mô hình `htdemucs`, chỉ dùng làm đầu vào phân tích.
+2. Dùng `stable-ts 2.19.1` / OpenAI Whisper `small` căn chỉnh lời đã biết bằng attention/DTW. Cửa sổ câu lấy từ LRC đã căn theo cùng MP3.
+3. Điều chỉnh khoảng im lặng trên giọng đã tách (`q_levels=100`, `k_size=3`, `min_word_dur=0.08`).
+4. Đối chiếu với căn chỉnh CTC Viterbi bằng `nguyenvulebinh/wav2vec2-base-vietnamese-250h`, revision `69e9000591623e5a4fc2f502407860bcdc0de0b2`, ở cả bản gốc và giọng đã tách.
 
-Chỉnh `lyrics-config.js` để chọn tệp lời và hiệu chỉnh độ lệch. `expectedSourceUrl` phải khớp `sourceUrl` MP3 trong `music-config.js`; đổi bài cần đổi cả dữ liệu lời tương ứng. Không hiển thị lời của bài cũ cho một nguồn nhạc mới.
+Chênh mốc bắt đầu giữa DTW và CTC có trung vị 93 ms, phân vị 95 là 363 ms. Đây là độ thống nhất giữa hai thuật toán, **không phải sai số đã đo so với người nghe**. Dữ liệu tự động chưa được nghe soát từng từ; `humanListeningVerified` và `reviewIsComplete` là `false`.
 
-Tệp LRC là UTF-8. Mỗi dòng có thời điểm bắt đầu tính từ đầu chính tệp MP3, theo mẫu `[mm:ss.xx]` rồi đến câu được hát. Một câu lặp lại có thể có nhiều timestamp trên cùng dòng. Các tag thông tin như `[ti:...]`, `[ar:...]` không phải câu hát và không được hiển thị.
+220 âm tiết lời chính được gắn `needsReview: true` do điểm âm học/nhận dạng thấp, hai cách căn lệch hơn 180 ms hoặc âm tiết ngân dài. `score` là điểm CTC, `whisperScore` là điểm Whisper; không phải xác suất chính xác đã hiệu chuẩn. `ctcStart`, `ctcEnd`, `alignmentDifference` và `reviewReasons` giữ bằng chứng để hiệu chỉnh.
 
-Đặt một dòng timestamp **không có chữ** tại lúc bắt đầu đoạn dạo, hết câu hoặc kết thúc phần hát để xóa câu trước. Nếu thiếu mốc này, trình phát chỉ có thể suy ra khoảng hiển thị tới câu tiếp theo, trong giới hạn thời lượng tối đa của cấu hình. Không dùng câu giả cho đoạn dạo. Có thể dùng JSON dạng `{cues:[{time,end,text}]}` nếu cần quy định rõ thời điểm hết từng câu; `time` và `end` tính bằng giây.
+19 âm tiết thuộc bốn cụm `(Hah-ah...)` giữ nguyên trong nguồn nhưng có `start: null`, `end: null` và cờ kiểm tra. Tiếng hát đệm có thể chồng lên lời chính; chưa có mốc đáng tin cậy nên bộ hiển thị bỏ qua, không tự đoán hoặc chia đều. Sau khi nghe và gán mốc, có thể thiết kế dữ liệu lớp hát đệm riêng nếu chúng chồng thời gian lên lời chính.
 
-Không điền lời hoặc mốc ước lượng khi chưa nghe/đối chiếu được bản thu. Dữ liệu nhận dạng tự động cần kiểm tra lại theo chính MP3; timestamp của một bản thu khác có thể lệch.
+## Bộ hiển thị nhẹ
+
+`lyrics.js` dùng chữ HTML, CSS opacity và dịch tối đa 4 px. Không tạo lyric canvas, mặt nạ chữ, sprite hoặc particle. Mỗi âm tiết được làm hiện trong 110 ms; vị trí toàn câu được giữ sẵn để tránh xô chữ. Hai câu chỉ cùng tồn tại trong khoảng chuyển 180 ms, sau đó bỏ câu cũ.
+
+Tất cả tiến trình chữ và chuyển câu là hàm của `audio.currentTime` từ cùng phần tử nhạc. RAF chỉ lên lịch đọc vị trí audio, giới hạn 30 lần/giây; không có đồng hồ, timer hoặc nội suy media time độc lập. Chữ dừng nguyên khi tạm dừng audio. Tua, lặp, đổi tốc độ và trở lại tab đều chọn lại chữ theo audio. Giảm chuyển động vẫn hiện từng âm tiết, bỏ dịch chuyển.
+
+Lời chỉ hiện ở chế độ khám phá sau phần thư. Đọc lại thư ẩn lyric nhưng không thay hoặc khởi động lại MP3. Âm tiết chưa đến mốc giữ opacity 0; không hiện câu tiếp theo trước khi hát. Nguồn MP3 phải khớp `expectedSourceUrl` trong `lyrics-config.js`.
 
 ## Hiệu chỉnh
 
-`offsetMs` dùng mili giây. Giá trị dương đưa lời xuất hiện **sớm hơn**, giá trị âm đưa lời xuất hiện **muộn hơn**. Độ lệch trong tag LRC `[offset:...]` được cộng với `offsetMs`. Chỉ dùng một nơi khi có thể để tránh cộng hai lần.
+`offsetMs` dương đưa lời xuất hiện sớm hơn, âm đưa lời muộn hơn. Chỉ dùng offset chung khi toàn bài lệch đều. Một âm tiết sai riêng cần sửa `start`/`end` trong JSON; không sửa lời hoặc tự co giãn toàn bài.
 
-Phát thử đúng MP3 và tìm một câu có điểm vào giọng rõ. Nếu chữ hiện chậm 200 ms, tăng `offsetMs` thêm 200. Nếu chỉ một câu lệch, sửa timestamp của câu đó. Kiểm tra cả đầu, giữa và cuối bài: một offset chung không sửa được mốc sai riêng từng câu.
+Mốc lời chính phải theo thứ tự tăng, `end > start`, không vượt thời lượng MP3. Bộ đọc từ chối timestamp hỏng. Sau khi nghe sửa, cập nhật cờ/lý do tương ứng. Không đổi `humanListeningVerified` thành `true` chỉ vì kiểm thử JavaScript đạt.
 
-Mọi pha tụ, đọc và tan lấy từ `audio.currentTime`. Khi tạm dừng, tiến trình hạt đứng tại cùng vị trí; tắt tiếng không dừng lời. Tua, phát lặp và quay lại tab sẽ chọn lại câu theo thời gian audio hiện tại. Không chạy đồng hồ lời riêng. Chế độ giảm chuyển động giữ chữ rõ và đồng bộ, bỏ hiệu ứng tụ/tan.
+Chạy `npm run test:gift` để kiểm tra parser, timeline, nhạc và mã hóa. Kiểm thử trình duyệt cần phát đúng MP3, kiểm tra trước/sau mốc từ, pause, seek, tốc độ, lặp, giảm chuyển động, chuyển câu và câu dài trên điện thoại. Ảnh/trace và dữ liệu phân tích không nằm trong thư mục xuất bản.
 
-## Đưa thay đổi lên website
+Xuất bản qua nhánh/thư mục Pages hiện được xác minh từ workflow. LRC cũ vẫn được giữ làm tài liệu căn câu, không còn là dữ liệu hiển thị mặc định.
 
-Chạy local bằng `node scripts/gift-serve.mjs` từ repository rồi mở `/mot-goc-nho/`. Sau khi sửa LRC/cấu hình, kiểm tra lời theo bản thu, commit những tệp công khai cần thiết, push vào nhánh Pages đang dùng, đợi deployment thành công rồi tải lại URL thật. Lưu LRC trên máy chưa cập nhật website.
-
-LRC là tài nguyên công khai của website, giống MP3; không đặt lời nhắn riêng hoặc thông tin mở thư trong đó. Bản nhận dạng, báo cáo kiểm thử và ảnh chứa thư nằm ở `../private`, ngoài repository và ngoài thư mục xuất bản.
+Nguồn công cụ: [stable-ts](https://github.com/jianfch/stable-ts), [Demucs](https://github.com/facebookresearch/demucs), [mô hình CTC tiếng Việt](https://huggingface.co/nguyenvulebinh/wav2vec2-base-vietnamese-250h).

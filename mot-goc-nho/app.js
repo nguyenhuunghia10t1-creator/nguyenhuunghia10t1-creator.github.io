@@ -34,9 +34,9 @@ async function loadLyrics() {
   let candidate;
   try {
     const [{createLyrics},{default:lyricsConfig}] = await Promise.all([
-      import('./lyrics.js?v=20261009-r6'), import('./lyrics-config.js?v=20261009-r6'),
+      import('./lyrics.js?v=20261009-word1'), import('./lyrics-config.js?v=20261009-word1'),
     ]);
-    candidate = createLyrics({root:$('lyrics-zone'),canvas:$('lyrics-particles'),current:$('lyrics-current'),next:$('lyrics-next'),music,config:lyricsConfig,reducedMotion,
+    candidate = createLyrics({root:$('lyrics-zone'),current:$('lyrics-current'),next:$('lyrics-next'),music,config:lyricsConfig,reducedMotion,
       onAvailability:available=>scene?.setLyricsLayout?.(available)});
     lyrics = candidate;
     lyrics.setView(document.body.dataset.view);

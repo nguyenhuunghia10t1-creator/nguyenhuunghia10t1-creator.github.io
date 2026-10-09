@@ -1,21 +1,21 @@
 /**
- * Lời hát đồng bộ với MP3 — chỉ chỉnh tệp này và tệp LRC, không sửa logic.
- * Chỉ điền lời/timestamp được phép sử dụng, đã kiểm tra với đúng bản thu.
- * Tệp LRC UTF-8: [mm:ss.xx]câu được hát; [mm:ss.xx] rỗng để dừng ở nhạc dạo.
- * expectedSourceUrl phải khớp music-config.js. Đổi bài thì thay cả LRC và giá trị này.
- * offsetMs dương: chữ sớm hơn âm thanh; âm: chữ muộn hơn. Cộng với [offset:] LRC.
- * maxDisplayMs chỉ giới hạn thời gian giữ câu nếu thiếu mốc kết thúc, không sửa mốc hát.
- * LRC chưa có câu thật: tự ẩn khu vực; không tạo lời/timestamp thay thế.
+ * Lời hát đồng bộ từng âm tiết với MP3 — chỉnh cấu hình và JSON, không sửa logic.
+ * lyrics.txt là lời gốc; JSON giữ các mốc tự động và cờ needsReview để nghe kiểm tra.
+ * start/end null: tiếng hát đệm chưa có mốc, không tự chia đều hoặc đoán giờ.
+ * expectedSourceUrl phải khớp music-config.js. Đổi bài thì thay JSON và giá trị này.
+ * offsetMs dương: chữ sớm hơn âm thanh; âm: chữ muộn hơn. Cộng với offsetSeconds trong JSON.
+ * maxDisplayMs chỉ dùng nếu chuyển lại bộ đọc LRC cũ, không sửa mốc âm tiết.
+ * Dữ liệu hỏng hoặc không khớp nguồn: tự ẩn khu vực, không tạo mốc thay thế.
  */
 export default {
   enabled: true,
-  format: 'lrc', // 'lrc' hoặc 'json' ({cues:[{time,text,end}]}), thời gian JSON là giây.
-  sourceUrl: './assets/thanh-tan.lrc',
+  format: 'words', // JSON với mốc riêng cho từng âm tiết, tính bằng giây.
+  sourceUrl: './assets/thanh-tan.words.json',
   expectedSourceUrl: './assets/music.mp3',
   offsetMs: 0,
-  showNext: true,
-  nextPreviewMs: 8000,
-  formationMs: 850,
-  dissolveMs: 1050,
+  showNext: false,
+  wordRevealMs: 110,
+  crossfadeMs: 180,
+  lineHoldMs: 900,
   maxDisplayMs: 12000,
 };
