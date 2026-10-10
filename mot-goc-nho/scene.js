@@ -1010,8 +1010,11 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     const minimum = minimumViewDistance(required, controls.target);
     controls.minDistance = minimum;
     controls.maxDistance = Math.max(baseDistance * 1.33, required * 1.18);
-    if (distance < minimum) {
-      camera.position.sub(controls.target).multiplyScalar(minimum / distance).add(controls.target);
+    // Default/reset views still fit the full scene, even in a short desktop
+    // window. Only a user's camera interaction opts into the closer range.
+    const framingMinimum = manualViewDirty ? minimum : required;
+    if (distance < framingMinimum) {
+      camera.position.sub(controls.target).multiplyScalar(framingMinimum / distance).add(controls.target);
       controls.update();
     }
   }
