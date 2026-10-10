@@ -113,6 +113,8 @@ Mặt nạ chữ được lấy mẫu ở độ phân giải gấp đôi, với 
 
 Hiệu ứng nền dùng buffer tái sử dụng: hoa được thả liên tục theo ba lớp xa, trong tán và gần máy quay, với gió ngang và tốc độ xoay khác nhau. Nhịp cơ bản khoảng 0,30 giây/cánh khi đọc và 0,19 giây/cánh khi khám phá; thiết bị hạn chế giảm mật độ. Chỉ cánh hoa đi vào vùng chữ được làm dịu bằng shader, không có lớp phủ lên cảnh. Sao băng có đầu–đuôi mờ mềm, nhiều độ sâu và lịch xuất hiện ngắn hơn; đường bay tránh vùng chữ, nút và tán cây. Cả hai hiệu ứng dừng khi bật giảm chuyển động và khi tab ẩn.
 
+Trên máy tính (khung cảnh rộng từ 900 px), hướng dẫn khám phá dùng thao tác chuột. Có thể zoom gần tới khoảng một nửa khoảng cách giới hạn cũ; khoảng cách tối thiểu vẫn giữ camera ngoài vùng cây và nhân vật khi xoay. Zoom sát có thể cắt một phần tán cây hoặc đưa tán vào vùng lời hát. Góc nhìn mặc định và nút ↺ vẫn khôi phục toàn cảnh; giới hạn giữ trọn cảnh trên điện thoại không đổi.
+
 ## Thư viện và quyền riêng tư khi kiểm tra
 
 Three.js 0.186.1 và OrbitControls được lưu cùng trang dưới `vendor`; giấy phép MIT đi kèm. Noto Serif dùng SIL Open Font License; nguồn và giấy phép có trong `assets/fonts/`. Không dùng CDN lúc chạy, framework UI, bộ theo dõi hoặc backend. Kiểm thử trình duyệt và ảnh riêng không nằm trong repository.

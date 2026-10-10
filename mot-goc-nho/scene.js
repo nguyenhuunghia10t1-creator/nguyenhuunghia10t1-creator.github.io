@@ -969,7 +969,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     if (!safeSceneArea) return 0;
     if (fitCache?.revision === fitRevision && Math.abs(fitCache.polar - polar) < 0.000001 && fitCache.target.distanceToSquared(target) < 0.000000001 && fitCache.offset.distanceToSquared(offset) < 0.000000001) return fitCache.distance;
     // Each circular slice is invariant under azimuth. Its support distance fits
-    // every turn, including the closest permitted pinch zoom and tilted views.
+    // every turn at the full-scene distance, including tilted views.
     const pivotX = (0.5 - offset.x) * viewportWidth;
     const pivotY = (0.5 - offset.y) * viewportHeight;
     const horizontal = Math.min(pivotX - safeSceneArea.left, safeSceneArea.right - pivotX) * 2 / viewportWidth;
@@ -993,15 +993,25 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     fitCache = { revision: fitRevision, polar, target: target.clone(), offset: offset.clone(), distance };
     return distance;
   }
+  function minimumViewDistance(fullFit, target = initialTarget) {
+    if (mode !== 'explore' || viewportWidth < 900) return fullFit;
+    // Desktop close-ups can crop the crown. Keep the camera outside the entire
+    // scene envelope through a full orbit, while default/reset still fit it all.
+    const anchorShift = Math.hypot(profileAnchor.x - target.x, profileAnchor.y - target.z);
+    const clearance = framingProfile.reduce((radius, bin) => Math.max(radius,
+      Math.hypot(bin.radius + anchorShift, Math.max(Math.abs(bin.minY - target.y), Math.abs(bin.maxY - target.y))) + 1), 0);
+    return Math.min(fullFit, Math.max(fullFit * 0.5, clearance));
+  }
   function enforceSafeFit() {
     if (!safeSceneArea || cameraTransition) return;
     const distance = camera.position.distanceTo(controls.target);
     const required = fitDistance(controls.getPolarAngle(), controls.target, currentViewOffset);
     if (!required) return;
-    controls.minDistance = required;
+    const minimum = minimumViewDistance(required, controls.target);
+    controls.minDistance = minimum;
     controls.maxDistance = Math.max(baseDistance * 1.33, required * 1.18);
-    if (distance < required) {
-      camera.position.sub(controls.target).multiplyScalar(required / distance).add(controls.target);
+    if (distance < minimum) {
+      camera.position.sub(controls.target).multiplyScalar(minimum / distance).add(controls.target);
       controls.update();
     }
   }
@@ -1039,7 +1049,7 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     }
     const elevation = mode === 'letter' && viewportWidth < 900 ? 0.17 : 0.095;
     initialCamera.set(initialTarget.x + (isPortrait ? 0.40 : 1.45), initialTarget.y + baseDistance * elevation, initialTarget.z + baseDistance);
-    controls.minDistance = safeSceneArea ? fitDistance(Math.atan2(1, elevation)) : baseDistance * 0.63;
+    controls.minDistance = safeSceneArea ? minimumViewDistance(fitDistance(Math.atan2(1, elevation))) : baseDistance * 0.63;
     controls.maxDistance = baseDistance * 1.33;
     framingKey = safeAreaKey(safeSceneArea);
   }
@@ -1106,8 +1116,9 @@ export async function createScene({ canvas, onReady = () => {}, onFallback = () 
     const resetPolar = Math.acos((initialCamera.y - initialTarget.y) / initialCamera.distanceTo(initialTarget));
     // A tilted close-up can have a larger safety radius than the initial view.
     // Restore the initial bounds before controls update the reset transition.
-    controls.minDistance = safeSceneArea ? fitDistance(resetPolar, initialTarget, desiredViewOffset) : baseDistance * 0.63;
-    controls.maxDistance = Math.max(baseDistance * 1.33, controls.minDistance * 1.18);
+    const resetFit = safeSceneArea ? fitDistance(resetPolar, initialTarget, desiredViewOffset) : baseDistance * 0.63;
+    controls.minDistance = safeSceneArea ? minimumViewDistance(resetFit) : resetFit;
+    controls.maxDistance = Math.max(baseDistance * 1.33, resetFit * 1.18);
     if (reducedMotion) {
       camera.position.copy(initialCamera);
       controls.target.copy(initialTarget);

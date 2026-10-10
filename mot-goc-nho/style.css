@@ -72,3 +72,5 @@ body.fallback[data-letter-mode=cinematic] #world{background-size:100% 100%,auto 
   #music-root{right:20px;bottom:12px;max-width:calc(60vw - 32px)}
 }
 body.fallback.has-lyrics[data-view=explore] #world{background-size:100% 100%,auto 58%;background-position:center,center 69%;background-repeat:no-repeat}
+.gate .eyebrow{font-size:16px;letter-spacing:.14em;line-height:1.6}
+@media(max-width:600px){.gate .eyebrow{font-size:14px}}

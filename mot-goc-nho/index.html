@@ -12,9 +12,9 @@
   <link rel="preload" href="./assets/fonts/noto-serif-latin-400.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="./assets/fonts/noto-serif-vietnamese-400.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="./fonts.css?v=20261009-r3">
-  <link rel="stylesheet" href="./style.css?v=20261009-orbit2">
+  <link rel="stylesheet" href="./style.css?v=20261010-zoom">
   <script type="importmap">{"imports":{"three":"./vendor/three.module.js"}}</script>
-  <script type="module" src="./app.js?v=20261009-orbit2"></script>
+  <script type="module" src="./app.js?v=20261010-zoom"></script>
 </head>
 <body data-view="locked">
   <main id="app">
@@ -33,7 +33,6 @@
           <button class="primary-button" id="open-button" type="submit"><span>Mở thư</span><span class="button-flower" aria-hidden="true">✳</span></button>
           <p id="open-status" class="form-status" role="status" aria-live="polite"></p>
         </form>
-        <p class="gate-footnote">Một chút bình yên, chờ em mở.</p>
       </div>
     </section>
 
@@ -51,7 +50,7 @@
         <div id="lyrics-current" aria-live="off"></div>
         <p id="lyrics-next" aria-hidden="true"></p>
       </div>
-      <div class="explore-bottom"><p class="gesture-hint" id="gesture-hint">Kéo để nhìn quanh · Chụm để gần hơn<br><span>Thử chạm người dưới gốc cây hoặc một cụm hoa.</span></p><div class="scene-actions"><button id="reset-button" class="quiet-button scene-button" type="button"><span aria-hidden="true">↺</span> Góc nhìn ban đầu</button><button id="reread-button" class="quiet-button scene-button" type="button"><span aria-hidden="true">↗</span> Đọc lại thư</button></div></div>
+      <div class="explore-bottom"><p class="gesture-hint" id="gesture-hint">Em kéo chuột để nhìn quanh, lăn trỏ chuột để zoom in-out.<br><span>Chạm vào người dưới gốc cây và tán hoa sẽ có hiệu ứng.</span></p><div class="scene-actions"><button id="reset-button" class="quiet-button scene-button" type="button"><span aria-hidden="true">↺</span> Góc nhìn ban đầu</button><button id="reread-button" class="quiet-button scene-button" type="button"><span aria-hidden="true">↗</span> Đọc lại thư</button></div></div>
     </section>
     <p id="dialogue" class="dialogue" hidden role="status"></p>
     <p id="scene-status" class="scene-status" role="status">Đang thắp một góc nhỏ…</p>
